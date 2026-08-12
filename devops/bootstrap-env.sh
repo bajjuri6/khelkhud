@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 # Write /opt/khelkhud/.env on the VM — the one place production secrets live.
 #
-# Run once at setup, and again whenever a secret changes. Deliberately interactive: this
-# repo has no secret store, and the alternative (a committed encrypted file, or secrets
-# passed as deploy.sh arguments) puts them in git history or shell history respectively.
+# Run once at setup, and again whenever a secret changes.
 #
-# Values are read with `read -rs` where secret, and the assembled file is piped straight
-# over SSH — it is never written to local disk.
+# Two modes:
+#   interactive (default)  prompts for each value; secrets read with `read -rs`
+#   non-interactive        set KK_NONINTERACTIVE=1 and supply the values as env vars:
+#                            PG_PASSWORD, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+#                            ADMIN_EMAILS, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET,
+#                            RAZORPAY_WEBHOOK_SECRET
+#                          Only PG_PASSWORD is required; the rest degrade (no Google
+#                          sign-in, payments in stub mode).
+#
+# The non-interactive path exists so this can run from a deploy script or a CI job. Prefer
+# passing values through a file sourced into the environment rather than typing them on a
+# command line, where they land in shell history.
+#
+# The assembled file is piped straight over SSH either way — it is never written to local
+# disk, and this repo has no secret store by design.
 #
 # For anything beyond a one-person project, replace this with Azure Key Vault + a managed
 # identity on the VM. It is not worth the $0.03/10k-operations and the extra moving part
@@ -39,19 +50,31 @@ info "Writing ${REMOTE_DIR}/.env on ${VM_IP}"
 info "Public origin: ${PUBLIC_ORIGIN}"
 echo
 
-read -rsp "Postgres admin password for ${PG_ADMIN_USER}: " PG_PASSWORD; echo
-[[ -n "$PG_PASSWORD" ]] || die "Password required."
+if [[ "${KK_NONINTERACTIVE:-0}" == "1" ]]; then
+  [[ -n "${PG_PASSWORD:-}" ]] || die "KK_NONINTERACTIVE=1 requires PG_PASSWORD."
+  GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}"
+  GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}"
+  ADMIN_EMAILS="${ADMIN_EMAILS:-$ADMIN_EMAIL}"
+  RAZORPAY_KEY_ID="${RAZORPAY_KEY_ID:-}"
+  RAZORPAY_KEY_SECRET="${RAZORPAY_KEY_SECRET:-}"
+  RAZORPAY_WEBHOOK_SECRET="${RAZORPAY_WEBHOOK_SECRET:-}"
+  [[ -n "$GOOGLE_CLIENT_ID" ]] || warn "No GOOGLE_CLIENT_ID — Google sign-in will 503. Email + password still works."
+  [[ -n "$RAZORPAY_KEY_ID" ]] || warn "No Razorpay keys — payments run in stub mode."
+else
+  read -rsp "Postgres admin password for ${PG_ADMIN_USER}: " PG_PASSWORD; echo
+  [[ -n "$PG_PASSWORD" ]] || die "Password required."
 
-read -rp  "Google OAuth client ID: " GOOGLE_CLIENT_ID
-read -rsp "Google OAuth client secret: " GOOGLE_CLIENT_SECRET; echo
-read -rp  "Admin emails (comma-separated) [${ADMIN_EMAIL}]: " ADMIN_EMAILS
-ADMIN_EMAILS="${ADMIN_EMAILS:-$ADMIN_EMAIL}"
+  read -rp  "Google OAuth client ID: " GOOGLE_CLIENT_ID
+  read -rsp "Google OAuth client secret: " GOOGLE_CLIENT_SECRET; echo
+  read -rp  "Admin emails (comma-separated) [${ADMIN_EMAIL}]: " ADMIN_EMAILS
+  ADMIN_EMAILS="${ADMIN_EMAILS:-$ADMIN_EMAIL}"
 
-echo
-info "Razorpay — leave blank to run payments in stub mode."
-read -rp  "Razorpay key id: " RAZORPAY_KEY_ID
-read -rsp "Razorpay key secret: " RAZORPAY_KEY_SECRET; echo
-read -rsp "Razorpay webhook secret: " RAZORPAY_WEBHOOK_SECRET; echo
+  echo
+  info "Razorpay — leave blank to run payments in stub mode."
+  read -rp  "Razorpay key id: " RAZORPAY_KEY_ID
+  read -rsp "Razorpay key secret: " RAZORPAY_KEY_SECRET; echo
+  read -rsp "Razorpay webhook secret: " RAZORPAY_WEBHOOK_SECRET; echo
+fi
 
 # 64 hex chars. config.ts enforces a 32-char minimum and refuses to boot below it.
 SESSION_SECRET="$(openssl rand -hex 32)"

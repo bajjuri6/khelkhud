@@ -171,7 +171,10 @@ case "${1:-both}" in
     # `|| die` rather than `&&`: under `set -e` a bare `cmd && ok` that fails takes the
     # whole script down with no explanation of which step broke.
     pnpm --filter @khelkhud/theme build >/dev/null || die "Theme CSS generation failed."
-    ok "Theme CSS regenerated"
+    # @khelkhud/shared is now a BUILT package — its exports point at dist, not src, so the
+    # api and web both fail to resolve it on a clean checkout until this has run once.
+    pnpm --filter @khelkhud/shared build >/dev/null || die "@khelkhud/shared build failed."
+    ok "Theme CSS and @khelkhud/shared rebuilt"
     start_service api "$APP_PORT_API" "@khelkhud/api"
     start_service web "$APP_PORT_WEB" "@khelkhud/web"
     echo

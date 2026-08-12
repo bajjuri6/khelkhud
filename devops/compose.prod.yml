@@ -73,11 +73,14 @@ services:
       NODE_ENV: production
     # Direct binary, not `pnpm exec` — see the CMD note in Dockerfile.api: corepack cannot
     # write to the `app` user's home, so anything routed through pnpm dies at start.
+    #
+    # Path is relative to the image WORKDIR (/repo/apps/api), which is also why no
+    # --schema flag is needed: prisma finds ./prisma/schema.prisma from there. If the
+    # WORKDIR moves, this breaks — it did once already.
     command:
-      - apps/api/node_modules/.bin/prisma
+      - node_modules/.bin/prisma
       - migrate
       - deploy
-      - --schema=apps/api/prisma/schema.prisma
 
 volumes:
   caddy_data:

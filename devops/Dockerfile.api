@@ -1,12 +1,27 @@
 # syntax=docker/dockerfile:1.7
 #
-# khelkhud api — Express 5 + Prisma 6.
+# khelkhud api — Express 5 + Prisma 6, compiled to plain JS.
 #
-# The API has no compile step: its `build` script is `tsc --noEmit` and `start` is
-# `tsx src/index.ts`. So the runtime image ships the TypeScript sources and tsx rather
-# than a dist/ folder, and dev dependencies are NOT pruned — tsx is one of them. That is a
-# deliberate trade: adding a real tsc emit step would mean rewriting the ESM `.js` import
-# specifiers the source already uses, for a couple of hundred MB.
+# Three stages, following the shape kautilya-api already proved in production:
+#   deps    production dependencies ONLY, in isolation
+#   builder full dependencies, prisma generate, tsc emit
+#   runner  prod node_modules + compiled dist + the generated Prisma client
+#
+# The first version of this file produced a 917 MB image. Two mistakes, both named here
+# because both are easy to reintroduce:
+#
+#   1. It started the app with `tsx src/index.ts`, so TypeScript, tsx, esbuild, @types and
+#      the root's turbo binary all had to ship. Compiling lets `--prod` drop them.
+#      (`packages/shared` had to become a built package for this: plain `node` cannot
+#      import the .ts file its `exports` used to point at, and its relative specifiers
+#      needed .js extensions that tsx had been papering over.)
+#   2. It ran `prisma generate` in the runner AFTER copying node_modules. That mutates a
+#      360 MB directory, and Docker writes the whole changed tree as a second layer —
+#      roughly 300 MB of pure duplication. Generate where node_modules is built, then copy
+#      only the generated client.
+#
+# Built for a single architecture: the VM is ARM and the build machine is Apple Silicon,
+# so linux/arm64 is native at both ends. See BUILD_PLATFORM in devops/_lib.sh.
 
 FROM node:22-slim AS base
 ENV PNPM_HOME=/pnpm
@@ -20,7 +35,11 @@ RUN apt-get update \
 WORKDIR /repo
 
 # ---------------------------------------------------------------------------
-# deps — see Dockerfile.web for why every workspace manifest is copied.
+# deps — production dependencies only.
+#
+# Every workspace manifest is copied even though only the api subtree is installed: pnpm
+# validates the lockfile against every importer it declares, and a missing manifest fails
+# with ERR_PNPM_OUTDATED_LOCKFILE rather than being ignored.
 # ---------------------------------------------------------------------------
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -29,7 +48,40 @@ COPY apps/web/package.json      ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/theme/package.json  ./packages/theme/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --prod --frozen-lockfile --filter "@khelkhud/api..."
+
+# Generate the Prisma client straight into the PRODUCTION tree, so the runner can copy one
+# node_modules and be done. The alternative — generating in the builder and copying the
+# client across — means naming pnpm's content-addressed .pnpm directory, which embeds the
+# resolved version and its peer hash and breaks silently on the next Prisma bump.
+# Only the schema is copied, so a source edit does not bust this layer.
+COPY apps/api/prisma ./apps/api/prisma
+RUN pnpm --filter @khelkhud/api exec prisma generate
+
+# ---------------------------------------------------------------------------
+# builder — full dependencies, generate the client, compile both workspaces.
+# ---------------------------------------------------------------------------
+FROM base AS builder
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json      ./apps/api/
+COPY apps/web/package.json      ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/theme/package.json  ./packages/theme/
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "@khelkhud/api..."
+
+# tsconfig.base.json is NOT optional here. Both workspace tsconfigs `extends` it, and
+# without the file tsc quietly falls back to its ES5 defaults — which fails with
+# "Cannot find name 'Map'" from inside zod's type declarations, an error that looks like a
+# dependency problem and is actually a missing 18-line config file.
+COPY tsconfig.base.json ./
+COPY packages/shared ./packages/shared
+COPY apps/api        ./apps/api
+
+RUN pnpm --filter @khelkhud/api exec prisma generate
+# shared first — the api's tsc reads its emitted .d.ts.
+RUN pnpm --filter @khelkhud/shared build
+RUN pnpm --filter @khelkhud/api build
 
 # ---------------------------------------------------------------------------
 # runner
@@ -38,24 +90,25 @@ FROM base AS runner
 ENV NODE_ENV=production \
     API_PORT=4000
 
-COPY --from=deps /repo/node_modules                 ./node_modules
-COPY --from=deps /repo/apps/api/node_modules        ./apps/api/node_modules
-COPY --from=deps /repo/packages/shared/node_modules ./packages/shared/node_modules
-
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/shared ./packages/shared
-COPY apps/api        ./apps/api
-
-# Generate the Prisma client for THIS image's platform. Doing it here rather than copying
-# a generated client from a build stage is what keeps the arm64 engine binary correct.
-RUN pnpm --filter @khelkhud/api exec prisma generate
-
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/* \
- && groupadd -r app && useradd -r -g app app \
- && mkdir -p /repo/apps/api/uploads \
- && chown -R app:app /repo/apps/api/uploads
+ && groupadd -r app && useradd -r -g app app
+
+# Production dependency tree.
+COPY --from=deps --chown=app:app /repo/node_modules                 ./node_modules
+COPY --from=deps --chown=app:app /repo/apps/api/node_modules        ./apps/api/node_modules
+COPY --from=deps --chown=app:app /repo/packages/shared/node_modules ./packages/shared/node_modules
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY --from=builder --chown=app:app /repo/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder --chown=app:app /repo/packages/shared/dist         ./packages/shared/dist
+COPY --from=builder --chown=app:app /repo/apps/api/package.json        ./apps/api/package.json
+COPY --from=builder --chown=app:app /repo/apps/api/dist                ./apps/api/dist
+# Schema + migrations: `prisma migrate deploy` runs against these on every deploy.
+COPY --from=builder --chown=app:app /repo/apps/api/prisma              ./apps/api/prisma
+
+RUN mkdir -p /repo/apps/api/uploads && chown -R app:app /repo/apps/api/uploads
 
 # STORAGE_DRIVER=local writes here (providers/storage/local.ts resolves apps/api/uploads).
 # compose mounts a named volume over it — without that, every deploy silently discards
@@ -68,14 +121,8 @@ EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=4s --start-period=15s --retries=3 \
   CMD curl -fsS http://localhost:4000/api/health >/dev/null || exit 1
 
-# Invoke tsx DIRECTLY rather than through `pnpm --filter @khelkhud/api start`.
-#
-# Going through pnpm makes corepack try to provision the pinned pnpm version at container
-# start, into $HOME/.cache — and `app` is a system user whose home does not exist and is
-# not writable, so the container dies immediately with
-# `EACCES: permission denied, mkdir '/home/app/.cache/node/corepack/v1'`.
-# Baking a corepack cache in would work too, but a package manager has no business being
-# in the runtime path of a production process at all.
-#
-# This is exactly `apps/api/package.json`'s `start` script, minus the indirection.
-CMD ["apps/api/node_modules/.bin/tsx", "apps/api/src/index.ts"]
+# Plain node on compiled output. Not `pnpm start`: corepack would try to provision pnpm at
+# container start into $HOME/.cache, and `app` is a system user with no writable home, so
+# the container dies immediately with EACCES.
+WORKDIR /repo/apps/api
+CMD ["node", "dist/index.js"]

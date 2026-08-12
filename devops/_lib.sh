@@ -20,11 +20,23 @@ APP_PORT_WEB=3000
 APP_PORT_API=4000
 
 # ---- domain ------------------------------------------------------------------
-# khelkhud.org is pending purchase (approval in progress as of 2026-08-12). Until the DNS
-# A record exists, leave DOMAIN empty: Caddy then serves plain HTTP on the VM's public IP
-# so the stack is testable, and `provision-dns.sh` prints what to point where. Set DOMAIN
-# and re-run deploy.sh to switch on automatic Let's Encrypt TLS.
-DOMAIN="${DOMAIN:-}"
+# khelo.kautilya.app — a subdomain of an existing Route53 zone, used because khelkhud.org
+# is still pending purchase. DNS is therefore fully automatable (provision-dns.sh writes
+# the record), which khelkhud.org at an unknown registrar would not have been.
+#
+# Set DOMAIN="" to fall back to plain HTTP on the VM's bare IP (useful for a first smoke
+# test before DNS propagates).
+#
+# Moving to khelkhud.org later means: create the record, then re-run bootstrap-env.sh,
+# build.sh, push.sh, deploy.sh with DOMAIN=khelkhud.org. The site URL is baked into the
+# web bundle at build time, so it is a rebuild, not just a redeploy.
+DOMAIN="${DOMAIN:-khelo.kautilya.app}"
+
+# Route53. The kautilya.app zone lives in AWS account 087045791278 (the `default` CLI
+# profile), NOT in the Azure subscription everything else here uses — this is the one
+# place the two clouds meet.
+AWS_PROFILE="${AWS_PROFILE:-default}"
+ROUTE53_ZONE_ID="${ROUTE53_ZONE_ID:-Z00043891ZW6QE30M4V46}"   # kautilya.app.
 ADMIN_EMAIL="${ADMIN_EMAIL:-bajjuri6@gmail.com}"   # Let's Encrypt registration + expiry notices
 
 # ---- container registry ------------------------------------------------------
@@ -110,6 +122,16 @@ current_version() {
 
 az_cli() {
   az --subscription "$AZ_SUBSCRIPTION" "$@"
+}
+
+assert_aws_login() {
+  require_cmd aws
+  aws --profile "$AWS_PROFILE" sts get-caller-identity >/dev/null 2>&1 \
+    || die "AWS profile '${AWS_PROFILE}' cannot authenticate. Needed for Route53 (kautilya.app)."
+}
+
+aws_cli() {
+  aws --profile "$AWS_PROFILE" "$@"
 }
 
 assert_azure_login() {
