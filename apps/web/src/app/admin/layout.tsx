@@ -14,7 +14,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const me = await getMe();
   if (!me) redirect("/login");
   if (me.role !== "ADMIN") redirect("/");
+  // `theme-app` swaps the whole subtree onto the dashboard system (cool workspace grey,
+  // tighter radii, no display face on headings). See packages/theme/README.md — the brand
+  // forbids mixing the two systems, and this wrapper is how that rule is enforced.
   return (
+    <div className="theme-app min-h-full">
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
       <nav className="mb-6 flex flex-wrap gap-1 border-b pb-3 text-sm">
         {NAV.map((item) => (
@@ -28,6 +32,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         ))}
       </nav>
       {children}
+    </div>
     </div>
   );
 }

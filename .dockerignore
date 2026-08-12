@@ -1,0 +1,32 @@
+node_modules
+**/node_modules
+.git
+.github
+.next
+**/.next
+dist
+**/dist
+.turbo
+**/.turbo
+.pnpm-store
+
+# Secrets never enter the build context.
+.env
+.env.*
+!.env.example
+
+# Local uploads (dev storage driver) — the production volume is separate.
+apps/api/uploads
+
+logs
+*.log
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# The devops tree is mounted onto the VM, not baked into the app images. The Dockerfiles
+# themselves are passed with -f from outside the context.
+devops
+docs
+README.md

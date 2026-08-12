@@ -47,12 +47,16 @@ export default async function AthletesPage({
   const totalPages = Math.max(1, Math.ceil(meta.total / meta.pageSize));
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8">
-      <h1 className="text-2xl font-bold tracking-tight">Find Athletes</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {meta.total} athlete{meta.total === 1 ? "" : "s"} looking for support
+    <div className="mx-auto w-full max-w-6xl px-6 py-14">
+      <p className="eyebrow text-slate">Open requirements</p>
+      <h1 className="mt-3 max-w-[20ch] text-h1 font-semibold">
+        Every one of these is stuck on one specific thing.
+      </h1>
+      <p className="mt-4 max-w-xl leading-relaxed text-slate" data-numeric>
+        {meta.total} athlete{meta.total === 1 ? "" : "s"} looking for support. Filter by
+        sport, district or the size of the gap &mdash; then read what they actually need.
       </p>
-      <div className="mt-6 grid gap-8 lg:grid-cols-[260px_1fr]">
+      <div className="mt-12 grid gap-10 lg:grid-cols-[260px_1fr]">
         <DiscoveryFilters
           sports={sportsRes?.data ?? []}
           locations={locationsRes?.data ?? []}
@@ -63,11 +67,14 @@ export default async function AthletesPage({
         />
         <div>
           {athletes.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-              No athletes match these filters yet. Try broadening your search.
+            <div className="rounded-xl border border-dashed border-border bg-cream-2/60 p-14 text-center">
+              <p className="font-display text-h3">Nobody matches that yet.</p>
+              <p className="mt-2 text-sm text-slate">
+                Try a wider district, or clear the funding filter.
+              </p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
               {athletes.map((a) => (
                 <AthleteCard key={a.id} athlete={a} />
               ))}

@@ -1,5 +1,6 @@
 {
   "name": "khelkhud",
+  "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.12.1",
   "engines": {
@@ -7,6 +8,12 @@
   },
   "scripts": {
     "dev": "turbo dev",
+    "dev:up": "./devops/run-dev.sh",
+    "dev:stop": "./devops/run-dev.sh stop",
+    "dev:restart": "./devops/run-dev.sh restart",
+    "dev:status": "./devops/run-dev.sh status",
+    "local": "./devops/run-local.sh",
+    "local:down": "./devops/run-local.sh down",
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",

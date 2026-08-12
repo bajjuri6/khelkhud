@@ -96,6 +96,9 @@ importers:
       '@khelkhud/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@khelkhud/theme':
+        specifier: workspace:*
+        version: link:../../packages/theme
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -173,6 +176,18 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/theme:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.7
+        version: 22.20.1
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.12
       typescript:
         specifier: ^5.7.3
         version: 5.9.3

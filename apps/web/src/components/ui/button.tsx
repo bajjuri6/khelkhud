@@ -19,6 +19,14 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
+        // The marigold call to action. Rationed by the brand: at most one per viewport
+        // (docs/brand-guidelines.md §3) — if a screen seems to need two, the second one
+        // is `outline` or `onDark`.
+        accent:
+          "bg-marigold text-nightfall hover:bg-marigold-light focus-visible:ring-marigold/40",
+        // For predawn/nightfall bands, where `outline` disappears into the surface.
+        onDark:
+          "border-cream/25 bg-transparent text-cream hover:border-cream/50 hover:bg-cream/10",
       },
       size: {
         default:
@@ -26,6 +34,9 @@ const buttonVariants = cva(
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        // Landing-page and checkout scale. The default sizes are tuned for dense product
+        // chrome and read as tiny inside a hero.
+        hero: "h-12 gap-2 rounded-[min(var(--radius-lg),14px)] px-7 text-[0.95rem]",
         icon: "size-8",
         "icon-xs":
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",

@@ -17,16 +17,20 @@ export default async function LoginPage({
   const href = `${API_URL}/api/auth/google${next ? `?redirect=${encodeURIComponent(next)}` : ""}`;
 
   return (
-    <div className="flex min-h-[70svh] items-center justify-center px-4">
-      <Card className="w-full max-w-sm">
+    <div className="flex min-h-[78svh] items-center justify-center px-6 py-16">
+      <Card className="w-full max-w-md border-border p-2 shadow-long">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl">Welcome to khelkhud</CardTitle>
-          <CardDescription>
-            Sign in to create your athlete profile or start sponsoring talent.
+          <p className="eyebrow text-marigold">Welcome</p>
+          <CardTitle className="mt-3 font-display text-h2 font-semibold">
+            One account, either side.
+          </CardTitle>
+          <CardDescription className="mt-2 leading-relaxed">
+            Sign in to create an athlete profile, or to start backing one. You pick which
+            after you&rsquo;re in.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button asChild className="w-full" size="lg">
+          <Button asChild className="w-full" size="hero" variant="accent">
             <a href={href}>
               <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
                 <path
@@ -37,6 +41,10 @@ export default async function LoginPage({
               Continue with Google
             </a>
           </Button>
+          <p className="mt-5 text-center text-xs leading-relaxed text-sweat">
+            We only ever read your name, email and profile picture. Athlete profiles are
+            verified by a person before they go live.
+          </p>
         </CardContent>
       </Card>
     </div>

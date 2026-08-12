@@ -10,7 +10,11 @@ emerging athletes with sponsors, built around transparent sponsorship tracking:
 - **`apps/web`**: Next.js 15 (App Router, TS), Tailwind v4, shadcn/ui
 - **`apps/api`**: Express 5 (TS), Prisma 6, PostgreSQL
 - **`packages/shared`**: zod schemas + types shared by both apps
-- **`devops/`**: intentionally empty — owned by a separate developer (EC2 + Docker deployment)
+- **`packages/theme`**: the **First Light** brand as code — pure tokens plus the generated
+  Tailwind/shadcn CSS contracts. See `docs/brand-guidelines.md` (the source of truth) and
+  `packages/theme/README.md`. **No app may hardcode a colour, font or radius.**
+- **`devops/`**: Azure deployment — one VM (web + api + Caddy under compose) in front of a
+  managed PostgreSQL Flexible Server. See `devops/DEPLOYMENT_WORKFLOW.md`.
 - **Auth**: Sign in with Google (backend-driven OAuth, JWT session cookie)
 - **Payments**: Razorpay test mode, with a built-in stub when keys are absent
 - **Email**: AWS SES, with console logging fallback in dev
@@ -55,6 +59,38 @@ pnpm exec dotenv -e ../../.env -- tsx scripts/smoke.ts
 Exercises the whole core journey over HTTP: profile setup, uploads, discovery filters,
 sponsorship + stub payment, allocations/receipts/updates, admin verification, notifications and
 dashboards.
+
+## Running it
+
+```sh
+pnpm dev:up        # Postgres + api (:4000) + web (:3000), backgrounded, HMR
+pnpm dev:status
+pnpm dev:restart
+pnpm dev:stop      # leaves Postgres up; `docker compose down` to stop that too
+```
+
+`pnpm dev:up` also regenerates the theme CSS from `packages/theme/src/tokens.ts` before
+starting, so a token edit is never silently stale. (`pnpm dev` is the plain
+`turbo dev` — both apps in the foreground, no database, no theme step.)
+
+To exercise the **production images** in the production shape — Caddy in front, one origin
+on :8080, exactly what runs on the VM — before shipping:
+
+```sh
+./devops/build.sh
+pnpm local         # http://localhost:8080
+pnpm local:down
+```
+
+Both stacks can run at once; they don't share ports.
+
+## Deployment
+
+```sh
+./devops/build.sh patch && ./devops/push.sh && ./devops/deploy.sh
+```
+
+Full setup, cost breakdown and troubleshooting: **`devops/DEPLOYMENT_WORKFLOW.md`**.
 
 ## Demo accounts
 

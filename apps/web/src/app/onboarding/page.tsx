@@ -12,10 +12,14 @@ export default async function OnboardingPage() {
   if (me.role === "ADMIN") redirect("/admin");
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 py-16">
-      <h1 className="text-3xl font-bold tracking-tight">How will you use khelkhud?</h1>
-      <p className="mt-2 text-muted-foreground">
-        This is a one-time choice for your account, {me.name.split(" ")[0]}.
+    <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-6 py-20 text-center">
+      <p className="eyebrow text-marigold">Nearly there</p>
+      <h1 className="mt-4 text-h1 font-semibold">
+        Which side of this are you on, {me.name.split(" ")[0]}?
+      </h1>
+      <p className="mt-4 max-w-md leading-relaxed text-slate">
+        A one-time choice for your account. It decides which dashboard you land in &mdash;
+        not what you can see.
       </p>
       <RoleChooser />
     </div>

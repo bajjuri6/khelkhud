@@ -1,0 +1,60 @@
+# khelkhud edge. One origin for the browser: the site and the API share a hostname, so
+# there is no CORS in production and the session cookie is first-party.
+#
+# The whole file is driven by ONE variable, SITE_ADDRESS, which deploy.sh derives from
+# DOMAIN and passes through compose:
+#
+#   DOMAIN unset  ->  SITE_ADDRESS=":80"
+#                     Plain HTTP on the VM's bare public IP. This is the state while
+#                     khelkhud.org is still being purchased, and it keeps the stack
+#                     testable end to end without DNS.
+#   DOMAIN set    ->  SITE_ADDRESS="khelkhud.org www.khelkhud.org"
+#                     Caddy obtains and renews Let's Encrypt certificates automatically
+#                     for both names. Nothing else in the file changes.
+#
+# An earlier version declared separate `{$DOMAIN:localhost}` and `:80` blocks. Don't go
+# back to that: with DOMAIN empty it materialises a real `localhost` site on :443 with
+# Caddy's internal CA, which then fights the :80 catch-all for the same requests.
+
+{
+	email {$ADMIN_EMAIL}
+	# Uncomment while testing issuance, so a misconfigured DNS record doesn't burn
+	# Let's Encrypt's 5-failures-per-hostname-per-week limit:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# Canonicalise to the apex. Inert when DOMAIN is empty: the matcher becomes
+	# `www.domain.invalid`, which nothing resolves to.
+	@www host www.{$DOMAIN:domain.invalid}
+	redir @www https://{$DOMAIN:domain.invalid}{uri} permanent
+
+	# Order matters: /api/* has to be matched before the catch-all, or Next.js answers
+	# API calls with its own 404 page.
+	handle /api/* {
+		reverse_proxy api:4000 {
+			# Receipts and profile photos stream straight through; some are a few MB.
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		# Only meaningful once TLS is on, and harmless before then.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

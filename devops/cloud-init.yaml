@@ -1,0 +1,69 @@
+#cloud-config
+# First-boot provisioning for the khelkhud app VM (Ubuntu 24.04 LTS, arm64).
+#
+# Installs Docker from Docker's own apt repository rather than Ubuntu's `docker.io`
+# package: the distro package ships an old engine and, more importantly, no
+# `docker compose` v2 plugin, which the whole deploy flow depends on.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - postgresql-client-16   # for backup.sh's pg_dump and one-off psql sessions
+  - unattended-upgrades
+
+write_files:
+  # 4 GB of RAM with two Node processes and no swap is a machine that gets OOM-killed
+  # during a deploy, when the old and new containers briefly overlap.
+  - path: /etc/sysctl.d/99-khelkhud.conf
+    content: |
+      vm.swappiness=10
+      vm.overcommit_memory=1
+
+  # Container logs otherwise grow until they fill a 32 GB disk, which presents as the
+  # whole stack failing for no visible reason.
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "3" }
+      }
+
+  # Security updates apply themselves. This box has no on-call.
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+runcmd:
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - >
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc]
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable"
+    > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - usermod -aG docker azureuser
+  - systemctl enable --now docker
+
+  # 2 GB of swap. Not a substitute for RAM — insurance for the deploy overlap described
+  # above, and for `prisma migrate deploy` running alongside both app containers.
+  - fallocate -l 2G /swapfile
+  - chmod 600 /swapfile
+  - mkswap /swapfile
+  - swapon /swapfile
+  - sh -c 'echo "/swapfile none swap sw 0 0" >> /etc/fstab'
+
+  - mkdir -p /opt/khelkhud
+  - chown azureuser:azureuser /opt/khelkhud
+
+  # Weekly image prune. Every deploy leaves the previous image behind; on a 32 GB disk
+  # that becomes a disk-full incident in a couple of months.
+  - sh -c 'echo "0 4 * * 0 root docker image prune -af --filter until=336h" > /etc/cron.d/khelkhud-prune'
+
+final_message: "khelkhud VM ready after $UPTIME seconds"

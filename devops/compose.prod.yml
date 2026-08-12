@@ -1,0 +1,85 @@
+# The production stack, as it runs on the Azure VM at /opt/khelkhud.
+#
+# Three long-lived services (caddy, web, api) plus a one-shot `migrate` behind a profile.
+# Postgres is NOT here — it is the managed Azure Flexible Server; the only thing pointing
+# at it is DATABASE_URL in the .env this file reads.
+#
+# Deployed by devops/deploy.sh, which rsyncs this file plus Caddyfile and .env to the VM
+# and runs `docker compose -f compose.prod.yml up -d`.
+
+name: khelkhud
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      # deploy.sh sets SITE_ADDRESS to ":80" when DOMAIN is empty, or to
+      # "khelkhud.org www.khelkhud.org" once it isn't. See the Caddyfile header.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      DOMAIN: ${DOMAIN:-domain.invalid}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # issued certificates — losing this re-triggers ACME and can hit rate limits
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+  web:
+    image: ${REGISTRY}/khelkhud-web:${VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # Server-side rendering talks to the API over the compose network, not back out
+      # through Caddy — one less hop, and it keeps working if TLS is mid-renewal.
+      API_URL: http://api:4000
+    expose:
+      - "3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    image: ${REGISTRY}/khelkhud-api:${VERSION:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      API_PORT: "4000"
+    expose:
+      - "4000"
+    volumes:
+      # Athlete photos and receipts under STORAGE_DRIVER=local. A named volume, so
+      # replacing the container does not delete them. backup.sh archives it nightly.
+      - api_uploads:/repo/apps/api/uploads
+
+  # One-shot. Never starts with the stack:
+  #   docker compose -f compose.prod.yml --profile migrate run --rm migrate
+  # deploy.sh runs this BEFORE rolling the app containers.
+  migrate:
+    image: ${REGISTRY}/khelkhud-api:${VERSION:-latest}
+    profiles: ["migrate"]
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    # Direct binary, not `pnpm exec` — see the CMD note in Dockerfile.api: corepack cannot
+    # write to the `app` user's home, so anything routed through pnpm dies at start.
+    command:
+      - apps/api/node_modules/.bin/prisma
+      - migrate
+      - deploy
+      - --schema=apps/api/prisma/schema.prisma
+
+volumes:
+  caddy_data:
+  caddy_config:
+  api_uploads:

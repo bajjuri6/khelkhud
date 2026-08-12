@@ -15,8 +15,10 @@ dist/
 # local uploads (dev storage driver)
 apps/api/uploads/
 
-# logs
+# logs — the whole tree, not just *.log: devops/run-dev.sh also drops .<svc>.pid files
+# there, which an interrupted run leaves behind.
 *.log
+logs/
 
 # OS
 Thumbs.db
