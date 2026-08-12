@@ -169,6 +169,109 @@ async function main() {
   );
   check("public location label", String(pub.data?.locationLabel ?? "").includes(","), pub.data?.locationLabel);
 
+  // ---------- Sponsorship flow (stub payments) ----------
+  const sponsorUser = await prisma.user.upsert({
+    where: { email: "test-sponsor@khelkhud.dev" },
+    update: { role: "SPONSOR" },
+    create: { email: "test-sponsor@khelkhud.dev", name: "Test Sponsor", role: "SPONSOR" },
+  });
+  await prisma.sponsorProfile.upsert({
+    where: { userId: sponsorUser.id },
+    update: {},
+    create: { userId: sponsorUser.id, displayName: "ABC Foundation", sponsorType: "ORGANIZATION" },
+  });
+  const sponsorHeaders = {
+    cookie: `kk_session=${await signSession({ uid: sponsorUser.id, role: "SPONSOR" })}`,
+    "Content-Type": "application/json",
+  };
+
+  const requirement = await prisma.sponsorshipRequirement.findFirstOrThrow({
+    where: { playerId: profile.id, title: "Season kit" },
+  });
+  const createRes = await (
+    await fetch(`${API}/api/sponsorships`, {
+      method: "POST",
+      headers: sponsorHeaders,
+      body: JSON.stringify({
+        playerId: profile.id,
+        requirementId: requirement.id,
+        amountPaise: 500000,
+        purpose: "Cricket bat and kit",
+        isAnonymous: false,
+      }),
+    })
+  ).json();
+  check("create sponsorship", Boolean(createRes.data?.sponsorshipId), createRes);
+  check("SPN code format", /^SPN-\d{4}-\d{5}$/.test(createRes.data?.code ?? ""), createRes.data?.code);
+  check("stub provider", createRes.data?.provider === "STUB", createRes.data?.provider);
+
+  const verifyRes = await (
+    await fetch(`${API}/api/sponsorships/${createRes.data.sponsorshipId}/verify-payment`, {
+      method: "POST",
+      headers: sponsorHeaders,
+      body: JSON.stringify({
+        razorpayOrderId: createRes.data.orderId,
+        razorpayPaymentId: `pay_stub_${Date.now()}`,
+        razorpaySignature: "stub",
+      }),
+    })
+  ).json();
+  check("verify payment -> PAID", verifyRes.data?.paymentStatus === "PAID", verifyRes);
+
+  const reqAfter = await prisma.sponsorshipRequirement.findUniqueOrThrow({
+    where: { id: requirement.id },
+  });
+  check(
+    "requirement raised bumped",
+    reqAfter.raisedAmountPaise >= 500000 && reqAfter.status === "PARTIALLY_FUNDED",
+    { raised: reqAfter.raisedAmountPaise, status: reqAfter.status },
+  );
+
+  const playerNotif = await prisma.notification.findFirst({
+    where: { userId: user.id, type: "SPONSORSHIP_RECEIVED" },
+  });
+  check("player notified", Boolean(playerNotif), playerNotif?.title);
+
+  // Player sees the sponsorship; anonymity respected on anonymous ones
+  const playerList = await (
+    await fetch(`${API}/api/players/me/sponsorships`, { headers })
+  ).json();
+  check(
+    "player sees sponsorship",
+    playerList.data?.some((s: { code: string }) => s.code === createRes.data.code),
+  );
+
+  // Sponsor detail view
+  const detail = await (
+    await fetch(`${API}/api/sponsorships/${createRes.data.sponsorshipId}`, {
+      headers: sponsorHeaders,
+    })
+  ).json();
+  check("sponsor detail has transactions", Array.isArray(detail.data?.transactions), detail.data);
+  check(
+    "detail transactions CREATED+PAID",
+    detail.data?.transactions?.length === 2,
+    detail.data?.transactions?.map((t: { status: string }) => t.status),
+  );
+
+  // verify-payment is idempotent
+  const verifyAgain = await (
+    await fetch(`${API}/api/sponsorships/${createRes.data.sponsorshipId}/verify-payment`, {
+      method: "POST",
+      headers: sponsorHeaders,
+      body: JSON.stringify({
+        razorpayOrderId: createRes.data.orderId,
+        razorpayPaymentId: `pay_stub_${Date.now()}`,
+        razorpaySignature: "stub",
+      }),
+    })
+  ).json();
+  check("verify idempotent", verifyAgain.data?.paymentStatus === "PAID", verifyAgain);
+  const txCount = await prisma.transaction.count({
+    where: { sponsorshipId: createRes.data.sponsorshipId },
+  });
+  check("no duplicate PAID transaction", txCount === 2, txCount);
+
   console.log(failures === 0 ? "\nSMOKE PASS" : `\nSMOKE FAIL (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
 }

@@ -336,6 +336,38 @@ playersRouter.delete(
   },
 );
 
+// ---------- Sponsorships (player view) ----------
+
+playersRouter.get(
+  "/me/sponsorships",
+  requireAuth,
+  requireRole("PLAYER"),
+  async (req, res, next) => {
+    try {
+      const profile = await myProfile(req.user!.uid);
+      const sponsorships = await prisma.sponsorship.findMany({
+        where: { playerId: profile.id, paymentStatus: "PAID" },
+        include: {
+          sponsor: { include: { user: { select: { name: true, avatarUrl: true } } } },
+          requirement: { select: { id: true, title: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      // Respect anonymity toward the player.
+      res.json({
+        data: sponsorships.map((s) => ({
+          ...s,
+          sponsor: s.isAnonymous
+            ? { displayName: "Anonymous sponsor", user: { name: "Anonymous", avatarUrl: null } }
+            : s.sponsor,
+        })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // ---------- Requirements ----------
 
 playersRouter.post(

@@ -24,6 +24,31 @@ sponsorsRouter.get("/me", requireAuth, requireRole("SPONSOR"), async (req, res, 
   }
 });
 
+sponsorsRouter.get(
+  "/me/sponsorships",
+  requireAuth,
+  requireRole("SPONSOR"),
+  async (req, res, next) => {
+    try {
+      const profile = await prisma.sponsorProfile.findUnique({ where: { userId: req.user!.uid } });
+      if (!profile) throw new ApiError(404, "NO_PROFILE", "Sponsor profile not found");
+      const sponsorships = await prisma.sponsorship.findMany({
+        where: { sponsorId: profile.id },
+        include: {
+          player: {
+            include: { user: { select: { name: true, avatarUrl: true } }, sport: true },
+          },
+          updates: { orderBy: { createdAt: "desc" }, take: 1 },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      res.json({ data: sponsorships });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 sponsorsRouter.put(
   "/me",
   requireAuth,

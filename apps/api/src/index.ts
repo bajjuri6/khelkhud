@@ -9,6 +9,8 @@ import { authRouter } from "./routes/auth.js";
 import { metaRouter } from "./routes/meta.js";
 import { playersRouter } from "./routes/players.js";
 import { sponsorsRouter } from "./routes/sponsors.js";
+import { sponsorshipsRouter } from "./routes/sponsorships.js";
+import { razorpayWebhookBodyParser, razorpayWebhookHandler } from "./routes/webhooks.js";
 import {
   filesRouter,
   localUploadHandler,
@@ -31,9 +33,9 @@ app.use(
   }),
 );
 
-// Raw-body routes (file upload target; Razorpay webhook in Phase 4) must be
-// mounted BEFORE express.json().
+// Raw-body routes must be mounted BEFORE express.json().
 app.put("/api/uploads/local/:token", rawUploadBodyParser, localUploadHandler);
+app.post("/api/webhooks/razorpay", razorpayWebhookBodyParser, razorpayWebhookHandler);
 
 app.use(express.json());
 
@@ -45,6 +47,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/meta", metaRouter);
 app.use("/api/players", playersRouter);
 app.use("/api/sponsors", sponsorsRouter);
+app.use("/api/sponsorships", sponsorshipsRouter);
 app.use("/api/uploads", uploadsRouter);
 app.use("/api/files", filesRouter);
 

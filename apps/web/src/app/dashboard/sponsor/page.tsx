@@ -45,11 +45,11 @@ export default async function SponsorDashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Your sponsorships</CardTitle>
-            <CardDescription>Sponsorship tracking arrives in the next phase.</CardDescription>
+            <CardDescription>Track how your support is being used.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" size="sm" disabled>
-              Coming soon
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/sponsor/sponsorships">View sponsorships</Link>
             </Button>
           </CardContent>
         </Card>
