@@ -1,1 +1,3 @@
-export * from "./auth.js";
+export * from "./auth";
+export * from "./player";
+export * from "./upload";

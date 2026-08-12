@@ -6,11 +6,21 @@ import { pinoHttp } from "pino-http";
 import { config } from "./config.js";
 import { logger } from "./lib/logger.js";
 import { authRouter } from "./routes/auth.js";
+import { metaRouter } from "./routes/meta.js";
+import { playersRouter } from "./routes/players.js";
+import {
+  filesRouter,
+  localUploadHandler,
+  rawUploadBodyParser,
+  uploadsRouter,
+} from "./routes/uploads.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
 
 const app = express();
 
-app.use(helmet());
+// cross-origin resource policy relaxed so the web app (different port/origin)
+// can embed images served by this API
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors({ origin: config.WEB_URL, credentials: true }));
 app.use(cookieParser());
 app.use(
@@ -20,8 +30,10 @@ app.use(
   }),
 );
 
-// NOTE: the Razorpay webhook route (raw body) must be mounted BEFORE express.json()
-// when it lands in Phase 4.
+// Raw-body routes (file upload target; Razorpay webhook in Phase 4) must be
+// mounted BEFORE express.json().
+app.put("/api/uploads/local/:token", rawUploadBodyParser, localUploadHandler);
+
 app.use(express.json());
 
 app.get("/api/health", (_req, res) => {
@@ -29,6 +41,10 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/meta", metaRouter);
+app.use("/api/players", playersRouter);
+app.use("/api/uploads", uploadsRouter);
+app.use("/api/files", filesRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
