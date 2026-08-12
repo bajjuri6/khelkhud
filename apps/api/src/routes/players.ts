@@ -336,6 +336,42 @@ playersRouter.delete(
   },
 );
 
+playersRouter.get(
+  "/me/dashboard",
+  requireAuth,
+  requireRole("PLAYER"),
+  async (req, res, next) => {
+    try {
+      const profile = await myProfile(req.user!.uid);
+      const [paid, requirements, upcomingEvents] = await Promise.all([
+        prisma.sponsorship.findMany({
+          where: { playerId: profile.id, paymentStatus: "PAID" },
+          select: { amountPaise: true, status: true },
+        }),
+        prisma.sponsorshipRequirement.findMany({
+          where: { playerId: profile.id, status: { not: "CLOSED" } },
+          select: { totalAmountPaise: true, raisedAmountPaise: true },
+        }),
+        prisma.event.count({
+          where: { playerId: profile.id, isUpcoming: true },
+        }),
+      ]);
+      res.json({
+        data: {
+          totalReceivedPaise: paid.reduce((s, x) => s + x.amountPaise, 0),
+          activeSponsorships: paid.filter((s) => s.status === "ACTIVE").length,
+          fundingRequiredPaise: requirements.reduce((s, r) => s + r.totalAmountPaise, 0),
+          fundingReceivedPaise: requirements.reduce((s, r) => s + r.raisedAmountPaise, 0),
+          upcomingEvents,
+          verificationStatus: profile.verificationStatus,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // ---------- Sponsorships (player view) ----------
 
 playersRouter.get(

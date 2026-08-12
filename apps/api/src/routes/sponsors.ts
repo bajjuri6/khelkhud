@@ -25,6 +25,66 @@ sponsorsRouter.get("/me", requireAuth, requireRole("SPONSOR"), async (req, res, 
 });
 
 sponsorsRouter.get(
+  "/me/dashboard",
+  requireAuth,
+  requireRole("SPONSOR"),
+  async (req, res, next) => {
+    try {
+      const profile = await prisma.sponsorProfile.findUnique({ where: { userId: req.user!.uid } });
+      if (!profile) throw new ApiError(404, "NO_PROFILE", "Sponsor profile not found");
+
+      const paid = await prisma.sponsorship.findMany({
+        where: { sponsorId: profile.id, paymentStatus: "PAID" },
+        include: {
+          player: {
+            include: {
+              user: { select: { name: true, avatarUrl: true } },
+              sport: { select: { name: true } },
+              location: { select: { id: true, name: true } },
+            },
+          },
+        },
+      });
+
+      const totalSponsoredPaise = paid.reduce((s, x) => s + x.amountPaise, 0);
+      const playersSupported = new Set(paid.map((s) => s.playerId)).size;
+      const active = paid.filter((s) => s.status === "ACTIVE").length;
+      const completed = paid.filter((s) => s.status === "COMPLETED").length;
+      const utilizationCompleted = paid.filter(
+        (s) => s.utilizationStatus === "COMPLETED",
+      ).length;
+
+      const bySport = new Map<string, number>();
+      const byLocation = new Map<string, number>();
+      for (const s of paid) {
+        const sport = s.player.sport?.name ?? "Unassigned";
+        bySport.set(sport, (bySport.get(sport) ?? 0) + s.amountPaise);
+        const loc = s.player.location?.name ?? "Unknown";
+        byLocation.set(loc, (byLocation.get(loc) ?? 0) + s.amountPaise);
+      }
+
+      res.json({
+        data: {
+          totalSponsoredPaise,
+          playersSupported,
+          activeSponsorships: active,
+          completedSponsorships: completed,
+          utilizationCompleted,
+          bySport: [...bySport.entries()]
+            .map(([name, amountPaise]) => ({ name, amountPaise }))
+            .sort((a, b) => b.amountPaise - a.amountPaise),
+          byLocation: [...byLocation.entries()]
+            .map(([name, amountPaise]) => ({ name, amountPaise }))
+            .sort((a, b) => b.amountPaise - a.amountPaise),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+sponsorsRouter.get(
   "/me/sponsorships",
   requireAuth,
   requireRole("SPONSOR"),

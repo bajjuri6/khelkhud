@@ -461,6 +461,50 @@ async function main() {
     data: { verificationStatus: "PENDING", verifiedAt: null },
   });
 
+  // ---------- Notifications + dashboards ----------
+  const notifList = await (
+    await fetch(`${API}/api/notifications`, { headers })
+  ).json();
+  check(
+    "notifications list + unread count",
+    Array.isArray(notifList.data?.notifications) && notifList.data.unreadCount > 0,
+    notifList.data?.unreadCount,
+  );
+  const firstUnread = notifList.data.notifications.find(
+    (n: { readAt: string | null }) => !n.readAt,
+  );
+  if (firstUnread) {
+    await fetch(`${API}/api/notifications/${firstUnread.id}/read`, {
+      method: "POST",
+      headers,
+    });
+    const after = await (await fetch(`${API}/api/notifications`, { headers })).json();
+    check(
+      "mark-read decrements unread",
+      after.data.unreadCount === notifList.data.unreadCount - 1,
+      { before: notifList.data.unreadCount, after: after.data.unreadCount },
+    );
+  }
+
+  const playerDash = await (
+    await fetch(`${API}/api/players/me/dashboard`, { headers })
+  ).json();
+  check(
+    "player dashboard totals",
+    playerDash.data?.totalReceivedPaise >= 500000 && playerDash.data?.fundingRequiredPaise > 0,
+    playerDash.data,
+  );
+
+  const sponsorDash = await (
+    await fetch(`${API}/api/sponsors/me/dashboard`, { headers: sponsorHeaders })
+  ).json();
+  check(
+    "sponsor dashboard aggregations",
+    sponsorDash.data?.totalSponsoredPaise >= 500000 &&
+      sponsorDash.data?.bySport?.some((r: { name: string }) => r.name === "Cricket"),
+    sponsorDash.data,
+  );
+
   console.log(failures === 0 ? "\nSMOKE PASS" : `\nSMOKE FAIL (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
 }

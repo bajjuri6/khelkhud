@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import type { Me } from "@/lib/api-server";
 import { UserMenu } from "@/components/user-menu";
+import { NotificationBell } from "@/components/notification-bell";
 
 function dashboardPath(role: Me["role"]): string {
   switch (role) {
@@ -36,6 +37,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
               <Button asChild variant="ghost" size="sm">
                 <Link href={dashboardPath(me.role)}>Dashboard</Link>
               </Button>
+              <NotificationBell />
               <UserMenu me={me} />
             </>
           ) : (
