@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+.next/
+dist/
+.turbo/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# local uploads (dev storage driver)
+apps/api/uploads/
+
+# logs
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# editor
+.vscode/
+.idea/

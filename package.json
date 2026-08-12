@@ -1,0 +1,20 @@
+{
+  "name": "khelkhud",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "db:migrate": "pnpm --filter @khelkhud/api db:migrate",
+    "db:seed": "pnpm --filter @khelkhud/api db:seed",
+    "db:studio": "pnpm --filter @khelkhud/api db:studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4"
+  }
+}
