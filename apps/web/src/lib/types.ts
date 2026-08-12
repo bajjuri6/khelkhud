@@ -78,6 +78,59 @@ export type PublicPlayer = {
   requirements: Requirement[];
 };
 
+export type AttachmentRef = { id: string; fileName: string; mimeType: string; kind: string };
+
+export type Allocation = {
+  id: string;
+  label: string;
+  amountPaise: number;
+  status: "PLANNED" | "PURCHASED" | "COMPLETED";
+  receiptDocumentId: string | null;
+  note: string | null;
+  completedAt: string | null;
+};
+
+export type SponsorshipUpdateEntry = {
+  id: string;
+  title: string;
+  body: string;
+  sponsorshipId: string | null;
+  createdAt: string;
+  attachments: AttachmentRef[];
+};
+
+export type SponsorshipDetail = {
+  id: string;
+  code: string;
+  amountPaise: number;
+  purpose: string;
+  isAnonymous: boolean;
+  status: string;
+  paymentStatus: string;
+  utilizationStatus: string;
+  createdAt: string;
+  sponsor: {
+    displayName: string | null;
+    sponsorType?: string;
+    orgName?: string | null;
+    user: { name: string; avatarUrl: string | null };
+  };
+  player: { id: string; name: string; avatarUrl: string | null; photoKey: string | null };
+  requirement: Requirement | null;
+  allocations: Allocation[];
+  updates: SponsorshipUpdateEntry[];
+  documents: AttachmentRef[];
+  transactions?: {
+    id: string;
+    status: string;
+    amountPaise: number;
+    provider: string;
+    providerPaymentId: string | null;
+    occurredAt: string;
+  }[];
+  viewer: { isSponsor: boolean; isPlayer: boolean; isAdmin: boolean };
+};
+
 export const CATEGORY_LABELS: Record<string, string> = {
   UNDER_12: "Under 12",
   UNDER_15: "Under 15",

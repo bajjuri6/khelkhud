@@ -1,14 +1,41 @@
 import { Router } from "express";
-import { sponsorshipCreateSchema, verifyPaymentSchema } from "@khelkhud/shared";
+import {
+  allocationCreateSchema,
+  allocationUpdateSchema,
+  formatPaise,
+  sponsorshipCreateSchema,
+  verifyPaymentSchema,
+} from "@khelkhud/shared";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { ApiError } from "../middleware/errors.js";
 import { validate } from "../middleware/validate.js";
 import { payments } from "../providers/payments/index.js";
+import { notify } from "../services/notify.js";
 import {
   createSponsorship,
   markSponsorshipPaid,
+  recomputeUtilization,
 } from "../services/sponsorship.service.js";
+
+/** Loads a sponsorship and asserts the caller is its player-owner. */
+async function playerOwnedSponsorship(id: string, uid: string) {
+  const sponsorship = await prisma.sponsorship.findUnique({
+    where: { id },
+    include: {
+      player: { select: { userId: true } },
+      sponsor: { select: { userId: true } },
+      allocations: true,
+    },
+  });
+  if (!sponsorship || sponsorship.player.userId !== uid) {
+    throw new ApiError(404, "NOT_FOUND", "Sponsorship not found");
+  }
+  if (sponsorship.paymentStatus !== "PAID") {
+    throw new ApiError(400, "NOT_PAID", "This sponsorship has no confirmed payment yet");
+  }
+  return sponsorship;
+}
 
 export const sponsorshipsRouter: Router = Router();
 
@@ -58,6 +85,88 @@ sponsorshipsRouter.post(
 
       await markSponsorshipPaid(sponsorship, razorpayPaymentId);
       res.json({ data: { code: sponsorship.code, paymentStatus: "PAID" } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+sponsorshipsRouter.post(
+  "/:id/allocations",
+  requireAuth,
+  requireRole("PLAYER"),
+  validate(allocationCreateSchema),
+  async (req, res, next) => {
+    try {
+      const sponsorship = await playerOwnedSponsorship(String(req.params.id), req.user!.uid);
+      const allocatedSoFar = sponsorship.allocations.reduce((s, a) => s + a.amountPaise, 0);
+      if (allocatedSoFar + req.body.amountPaise > sponsorship.amountPaise) {
+        throw new ApiError(
+          400,
+          "OVER_ALLOCATED",
+          `Allocations cannot exceed the sponsored amount (${formatPaise(sponsorship.amountPaise)})`,
+        );
+      }
+      const allocation = await prisma.sponsorshipAllocation.create({
+        data: { ...req.body, sponsorshipId: sponsorship.id },
+      });
+      await recomputeUtilization(sponsorship.id);
+      res.status(201).json({ data: allocation });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+sponsorshipsRouter.patch(
+  "/:id/allocations/:allocationId",
+  requireAuth,
+  requireRole("PLAYER"),
+  validate(allocationUpdateSchema),
+  async (req, res, next) => {
+    try {
+      const sponsorship = await playerOwnedSponsorship(String(req.params.id), req.user!.uid);
+      const existing = sponsorship.allocations.find(
+        (a) => a.id === String(req.params.allocationId),
+      );
+      if (!existing) throw new ApiError(404, "NOT_FOUND", "Allocation not found");
+
+      if (req.body.amountPaise !== undefined) {
+        const others = sponsorship.allocations
+          .filter((a) => a.id !== existing.id)
+          .reduce((s, a) => s + a.amountPaise, 0);
+        if (others + req.body.amountPaise > sponsorship.amountPaise) {
+          throw new ApiError(400, "OVER_ALLOCATED", "Allocations cannot exceed the sponsored amount");
+        }
+      }
+      if (req.body.receiptDocumentId) {
+        const doc = await prisma.document.findUnique({
+          where: { id: req.body.receiptDocumentId },
+        });
+        if (!doc || doc.uploaderUserId !== req.user!.uid) {
+          throw new ApiError(403, "FORBIDDEN", "Receipt document not found");
+        }
+      }
+
+      const allocation = await prisma.sponsorshipAllocation.update({
+        where: { id: existing.id },
+        data: {
+          ...req.body,
+          ...(req.body.status === "COMPLETED" && existing.status !== "COMPLETED"
+            ? { completedAt: new Date() }
+            : {}),
+        },
+      });
+      await recomputeUtilization(sponsorship.id);
+
+      if (req.body.status && req.body.status !== existing.status) {
+        await notify(sponsorship.sponsor.userId, "PLAYER_UPDATE", {
+          title: `Utilization update on ${sponsorship.code}`,
+          body: `"${allocation.label}" is now ${allocation.status.toLowerCase()}.`,
+          linkUrl: `/dashboard/sponsor/sponsorships/${sponsorship.id}`,
+        });
+      }
+      res.json({ data: allocation });
     } catch (err) {
       next(err);
     }

@@ -272,6 +272,131 @@ async function main() {
   });
   check("no duplicate PAID transaction", txCount === 2, txCount);
 
+  // ---------- Tracking: allocations + updates ----------
+  const sid = createRes.data.sponsorshipId as string;
+
+  const alloc1 = await (
+    await fetch(`${API}/api/sponsorships/${sid}/allocations`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ label: "Cricket bat", amountPaise: 300000 }),
+    })
+  ).json();
+  check("create allocation", Boolean(alloc1.data?.id), alloc1);
+
+  const overAlloc = await fetch(`${API}/api/sponsorships/${sid}/allocations`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ label: "Too much", amountPaise: 300000 }),
+  });
+  check("over-allocation rejected", overAlloc.status === 400, overAlloc.status);
+
+  const marked = await (
+    await fetch(`${API}/api/sponsorships/${sid}/allocations/${alloc1.data.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ status: "PURCHASED" }),
+    })
+  ).json();
+  check("allocation -> PURCHASED", marked.data?.status === "PURCHASED", marked);
+
+  const afterAlloc = await prisma.sponsorship.findUniqueOrThrow({ where: { id: sid } });
+  check("utilization IN_PROGRESS", afterAlloc.utilizationStatus === "IN_PROGRESS", afterAlloc.utilizationStatus);
+
+  // Receipt upload + attach
+  const receiptPresign = await (
+    await fetch(`${API}/api/uploads/presign`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        kind: "RECEIPT",
+        fileName: "receipt.png",
+        mimeType: "image/png",
+        sizeBytes: png.length,
+      }),
+    })
+  ).json();
+  await fetch(receiptPresign.data.uploadUrl, {
+    method: "PUT",
+    headers: receiptPresign.data.headers,
+    body: png,
+  });
+  const receiptDoc = await (
+    await fetch(`${API}/api/uploads/confirm`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        storageKey: receiptPresign.data.storageKey,
+        kind: "RECEIPT",
+        fileName: "receipt.png",
+        mimeType: "image/png",
+        sizeBytes: png.length,
+        attach: { sponsorshipId: sid },
+      }),
+    })
+  ).json();
+  const withReceipt = await (
+    await fetch(`${API}/api/sponsorships/${sid}/allocations/${alloc1.data.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ receiptDocumentId: receiptDoc.data.id, status: "COMPLETED" }),
+    })
+  ).json();
+  check("receipt attached + COMPLETED", withReceipt.data?.receiptDocumentId === receiptDoc.data.id);
+
+  const afterComplete = await prisma.sponsorship.findUniqueOrThrow({ where: { id: sid } });
+  check(
+    "utilization COMPLETED + sponsorship COMPLETED",
+    afterComplete.utilizationStatus === "COMPLETED" && afterComplete.status === "COMPLETED",
+    { u: afterComplete.utilizationStatus, s: afterComplete.status },
+  );
+
+  // Linked update notifies sponsor; not public
+  const linkedUpdate = await (
+    await fetch(`${API}/api/updates`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        title: "Bought the new bat!",
+        body: "Purchased cricket bat and shoes using the sponsored amount.",
+        sponsorshipId: sid,
+        documentIds: [],
+      }),
+    })
+  ).json();
+  check("post linked update", Boolean(linkedUpdate.data?.id), linkedUpdate);
+  const sponsorNotif = await prisma.notification.findFirst({
+    where: { userId: sponsorUser.id, type: "PLAYER_UPDATE" },
+    orderBy: { createdAt: "desc" },
+  });
+  check("sponsor notified of update", Boolean(sponsorNotif), sponsorNotif?.title);
+
+  // General update is public
+  await fetch(`${API}/api/updates`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      title: "Training camp completed",
+      body: "Finished a 2-week training camp.",
+      documentIds: [],
+    }),
+  });
+  const publicUpdates = await (
+    await fetch(`${API}/api/players/${profile.id}/updates`)
+  ).json();
+  const titles = (publicUpdates.data ?? []).map((u: { title: string }) => u.title);
+  check("general update public", titles.includes("Training camp completed"), titles);
+  check("linked update NOT public", !titles.includes("Bought the new bat!"), titles);
+
+  // Sponsor sees the update in the detail feed
+  const detailAfter = await (
+    await fetch(`${API}/api/sponsorships/${sid}`, { headers: sponsorHeaders })
+  ).json();
+  check(
+    "sponsor sees linked update",
+    detailAfter.data?.updates?.some((u: { title: string }) => u.title === "Bought the new bat!"),
+  );
+
   console.log(failures === 0 ? "\nSMOKE PASS" : `\nSMOKE FAIL (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
 }

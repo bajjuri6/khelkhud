@@ -418,6 +418,25 @@ playersRouter.put(
   },
 );
 
+// ---------- Public updates ----------
+
+playersRouter.get("/:id/updates", async (req, res, next) => {
+  try {
+    // Only general (non-sponsorship-linked) updates are public.
+    const updates = await prisma.sponsorshipUpdate.findMany({
+      where: { playerId: String(req.params.id), sponsorshipId: null },
+      include: {
+        attachments: { select: { id: true, fileName: true, mimeType: true, kind: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+    res.json({ data: updates });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------- Public profile ----------
 
 playersRouter.get("/:id", async (req, res, next) => {

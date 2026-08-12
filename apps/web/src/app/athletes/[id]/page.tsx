@@ -8,14 +8,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { apiServer } from "@/lib/api-server";
-import { profilePhotoUrl } from "@/lib/upload";
-import { CATEGORY_LABELS, LEVEL_LABELS, type PublicPlayer } from "@/lib/types";
+import { documentUrl, profilePhotoUrl } from "@/lib/upload";
+import {
+  CATEGORY_LABELS,
+  LEVEL_LABELS,
+  type PublicPlayer,
+  type SponsorshipUpdateEntry,
+} from "@/lib/types";
 
 export default async function AthletePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const res = await apiServer<{ data: PublicPlayer }>(`/api/players/${id}`);
+  const [res, updatesRes] = await Promise.all([
+    apiServer<{ data: PublicPlayer }>(`/api/players/${id}`),
+    apiServer<{ data: SponsorshipUpdateEntry[] }>(`/api/players/${id}/updates`),
+  ]);
   if (!res) notFound();
   const p = res.data;
+  const updates = updatesRes?.data ?? [];
   const photo = profilePhotoUrl(p.photoKey) ?? p.avatarUrl;
 
   return (
@@ -132,6 +141,44 @@ export default async function AthletePage({ params }: { params: Promise<{ id: st
                   </div>
                   {a.description ? (
                     <p className="mt-1 text-sm text-muted-foreground">{a.description}</p>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {updates.length > 0 ? (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold">Updates</h2>
+          <div className="mt-3 grid gap-4">
+            {updates.map((u) => (
+              <Card key={u.id}>
+                <CardContent className="pt-6">
+                  <p className="font-medium">{u.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(u.createdAt).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{u.body}</p>
+                  {u.attachments.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {u.attachments.map((att) => (
+                        <a
+                          key={att.id}
+                          href={documentUrl(att.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs underline"
+                        >
+                          📎 {att.fileName}
+                        </a>
+                      ))}
+                    </div>
                   ) : null}
                 </CardContent>
               </Card>
