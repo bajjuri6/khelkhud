@@ -8,6 +8,7 @@ import { logger } from "./lib/logger.js";
 import { authRouter } from "./routes/auth.js";
 import { metaRouter } from "./routes/meta.js";
 import { playersRouter } from "./routes/players.js";
+import { sponsorsRouter } from "./routes/sponsors.js";
 import {
   filesRouter,
   localUploadHandler,
@@ -43,6 +44,7 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/meta", metaRouter);
 app.use("/api/players", playersRouter);
+app.use("/api/sponsors", sponsorsRouter);
 app.use("/api/uploads", uploadsRouter);
 app.use("/api/files", filesRouter);
 

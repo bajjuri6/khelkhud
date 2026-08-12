@@ -39,6 +39,129 @@ async function locationChain(locationId: string | null): Promise<string | null> 
   return parts.join(", ");
 }
 
+// ---------- Public discovery ----------
+
+function qstr(v: unknown): string | undefined {
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+playersRouter.get("/", async (req, res, next) => {
+  try {
+    const q = qstr(req.query.q);
+    const sportId = qstr(req.query.sportId);
+    const category = qstr(req.query.category);
+    const locationId = qstr(req.query.locationId);
+    const minPaise = req.query.minPaise ? Number(req.query.minPaise) : undefined;
+    const maxPaise = req.query.maxPaise ? Number(req.query.maxPaise) : undefined;
+    const verifiedOnly = req.query.verifiedOnly !== "false";
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(24, Number(req.query.pageSize) || 12);
+
+    // Location filter matches the whole subtree (state -> districts -> cities).
+    let locationIds: string[] | undefined;
+    const allLocations = await prisma.location.findMany({
+      select: { id: true, name: true, parentId: true },
+    });
+    if (locationId) {
+      const childrenOf = new Map<string | null, string[]>();
+      for (const l of allLocations) {
+        const list = childrenOf.get(l.parentId) ?? [];
+        list.push(l.id);
+        childrenOf.set(l.parentId, list);
+      }
+      locationIds = [];
+      const queue = [locationId];
+      while (queue.length > 0) {
+        const id = queue.pop()!;
+        locationIds.push(id);
+        queue.push(...(childrenOf.get(id) ?? []));
+      }
+    }
+
+    const openStatuses = ["OPEN", "PARTIALLY_FUNDED"] as const;
+    const where = {
+      user: {
+        isActive: true,
+        ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
+      },
+      ...(verifiedOnly ? { verificationStatus: "VERIFIED" as const } : {}),
+      ...(sportId ? { sportId } : {}),
+      ...(category ? { category: category as never } : {}),
+      ...(locationIds ? { locationId: { in: locationIds } } : {}),
+      ...(minPaise !== undefined || maxPaise !== undefined
+        ? {
+            requirements: {
+              some: {
+                status: { in: [...openStatuses] },
+                totalAmountPaise: {
+                  ...(minPaise !== undefined ? { gte: minPaise } : {}),
+                  ...(maxPaise !== undefined ? { lte: maxPaise } : {}),
+                },
+              },
+            },
+          }
+        : {}),
+    };
+
+    const [total, players] = await prisma.$transaction([
+      prisma.playerProfile.count({ where }),
+      prisma.playerProfile.findMany({
+        where,
+        include: {
+          user: { select: { name: true, avatarUrl: true } },
+          sport: { select: { id: true, name: true } },
+          achievements: { orderBy: [{ year: "desc" }, { createdAt: "desc" }], take: 1 },
+          requirements: {
+            where: { status: { in: [...openStatuses] } },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+        orderBy: [{ verificationStatus: "desc" }, { createdAt: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    const locationById = new Map(allLocations.map((l) => [l.id, l]));
+    const label = (id: string | null): string | null => {
+      const parts: string[] = [];
+      let cur = id ? locationById.get(id) : undefined;
+      while (cur) {
+        parts.push(cur.name);
+        cur = cur.parentId ? locationById.get(cur.parentId) : undefined;
+      }
+      return parts.length > 0 ? parts.join(", ") : null;
+    };
+
+    res.json({
+      data: players.map((p) => ({
+        id: p.id,
+        name: p.user.name,
+        avatarUrl: p.user.avatarUrl,
+        photoKey: p.photoKey,
+        sport: p.sport,
+        category: p.category,
+        experienceLevel: p.experienceLevel,
+        locationLabel: label(p.locationId),
+        verificationStatus: p.verificationStatus,
+        topAchievement: p.achievements[0]?.title ?? null,
+        openRequirement: p.requirements[0]
+          ? {
+              id: p.requirements[0].id,
+              title: p.requirements[0].title,
+              totalAmountPaise: p.requirements[0].totalAmountPaise,
+              raisedAmountPaise: p.requirements[0].raisedAmountPaise,
+            }
+          : null,
+      })),
+      meta: { total, page, pageSize },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------- Own profile (PLAYER) ----------
 
 playersRouter.get("/me", requireAuth, requireRole("PLAYER"), async (req, res, next) => {
