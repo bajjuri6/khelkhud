@@ -397,6 +397,70 @@ async function main() {
     detailAfter.data?.updates?.some((u: { title: string }) => u.title === "Bought the new bat!"),
   );
 
+  // ---------- Admin ----------
+  const adminEmail = (process.env.ADMIN_EMAILS ?? "").split(",")[0]?.trim().toLowerCase();
+  const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } });
+  const adminHeaders = {
+    cookie: `kk_session=${await signSession({ uid: adminUser.id, role: "ADMIN" })}`,
+    "Content-Type": "application/json",
+  };
+
+  const forbidden = await fetch(`${API}/api/admin/stats`, { headers });
+  check("admin routes forbidden for player", forbidden.status === 403, forbidden.status);
+
+  const stats = await (await fetch(`${API}/api/admin/stats`, { headers: adminHeaders })).json();
+  check(
+    "admin stats shape",
+    typeof stats.data?.totalSponsoredPaise === "number" &&
+      Array.isArray(stats.data?.bySport) &&
+      stats.data.totalPlayers >= 6,
+    stats.data,
+  );
+
+  const queue = await (
+    await fetch(`${API}/api/admin/verifications`, { headers: adminHeaders })
+  ).json();
+  check(
+    "verification queue has pending profiles",
+    (queue.data?.players?.length ?? 0) > 0,
+    queue.data?.players?.length,
+  );
+
+  // Approve the smoke-test player, verify effects, then revert for repeatability
+  const approveRes = await (
+    await fetch(`${API}/api/admin/verifications/player/${profile.id}`, {
+      method: "POST",
+      headers: adminHeaders,
+      body: JSON.stringify({ decision: "VERIFIED" }),
+    })
+  ).json();
+  check("admin approve", approveRes.data?.ok === true, approveRes);
+  const verifiedProfile = await prisma.playerProfile.findUniqueOrThrow({
+    where: { id: profile.id },
+  });
+  check("profile now VERIFIED", verifiedProfile.verificationStatus === "VERIFIED");
+  const record = await prisma.verificationRecord.findFirst({
+    where: { subjectPlayerId: profile.id },
+    orderBy: { createdAt: "desc" },
+  });
+  check("verification record written", record?.decision === "VERIFIED", record);
+  const verifyNotif = await prisma.notification.findFirst({
+    where: { userId: user.id, type: "VERIFICATION_RESULT" },
+    orderBy: { createdAt: "desc" },
+  });
+  check("player notified of verification", Boolean(verifyNotif), verifyNotif?.title);
+
+  const inDiscovery = await (await fetch(`${API}/api/players`)).json();
+  check(
+    "verified player appears in default discovery",
+    inDiscovery.data?.some((p: { id: string }) => p.id === profile.id),
+  );
+  // Revert so repeated smoke runs keep exercising the queue
+  await prisma.playerProfile.update({
+    where: { id: profile.id },
+    data: { verificationStatus: "PENDING", verifiedAt: null },
+  });
+
   console.log(failures === 0 ? "\nSMOKE PASS" : `\nSMOKE FAIL (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
 }

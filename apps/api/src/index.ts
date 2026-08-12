@@ -12,6 +12,7 @@ import { sponsorsRouter } from "./routes/sponsors.js";
 import { sponsorshipsRouter } from "./routes/sponsorships.js";
 import { razorpayWebhookBodyParser, razorpayWebhookHandler } from "./routes/webhooks.js";
 import { updatesRouter } from "./routes/updates.js";
+import { adminRouter } from "./routes/admin.js";
 import {
   filesRouter,
   localUploadHandler,
@@ -50,6 +51,7 @@ app.use("/api/players", playersRouter);
 app.use("/api/sponsors", sponsorsRouter);
 app.use("/api/sponsorships", sponsorshipsRouter);
 app.use("/api/updates", updatesRouter);
+app.use("/api/admin", adminRouter);
 app.use("/api/uploads", uploadsRouter);
 app.use("/api/files", filesRouter);
 
