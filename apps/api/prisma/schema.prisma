@@ -1,0 +1,460 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  PLAYER
+  SPONSOR
+  ADMIN
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  INFO_REQUESTED
+}
+
+enum SponsorType {
+  INDIVIDUAL
+  COMPANY
+  ORGANIZATION
+}
+
+enum PlayerCategory {
+  UNDER_12
+  UNDER_15
+  UNDER_19
+  SENIOR
+  PARA
+}
+
+enum ExperienceLevel {
+  BEGINNER
+  DISTRICT
+  STATE
+  NATIONAL
+  INTERNATIONAL
+}
+
+enum SponsorshipStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum UtilizationStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum AllocationStatus {
+  PLANNED
+  PURCHASED
+  COMPLETED
+}
+
+enum RequirementStatus {
+  OPEN
+  PARTIALLY_FUNDED
+  FULLY_FUNDED
+  CLOSED
+}
+
+enum DocumentKind {
+  ID_PROOF
+  ACHIEVEMENT_PROOF
+  RECEIPT
+  UPDATE_MEDIA
+  PROFILE_PHOTO
+  OTHER
+}
+
+enum NotificationType {
+  SPONSORSHIP_RECEIVED
+  PLAYER_UPDATE
+  VERIFICATION_RESULT
+  PAYMENT_CONFIRMED
+  INFO_REQUESTED
+  SYSTEM
+}
+
+enum TransactionType {
+  SPONSORSHIP_PAYMENT
+  REFUND
+}
+
+enum LocationLevel {
+  STATE
+  DISTRICT
+  CITY
+}
+
+// ---------- Core ----------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  googleSub String?  @unique
+  name      String
+  avatarUrl String?
+  role      Role?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  playerProfile  PlayerProfile?
+  sponsorProfile SponsorProfile?
+  notifications  Notification[]
+  documents      Document[]           @relation("UploadedDocuments")
+  verifications  VerificationRecord[] @relation("Reviewer")
+
+  @@index([role])
+}
+
+model Location {
+  id       String        @id @default(cuid())
+  name     String
+  level    LocationLevel
+  parentId String?
+  lat      Float?
+  lng      Float?
+
+  parent   Location?  @relation("LocationTree", fields: [parentId], references: [id])
+  children Location[] @relation("LocationTree")
+
+  playerProfiles  PlayerProfile[]
+  sponsorProfiles SponsorProfile[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, level, parentId])
+  @@index([parentId])
+  @@index([level])
+}
+
+model Sport {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  slug     String  @unique
+  iconKey  String?
+  isActive Boolean @default(true)
+
+  playerProfiles PlayerProfile[]
+  preferredBy    SponsorProfile[] @relation("PreferredSports")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------- Profiles ----------
+
+model PlayerProfile {
+  id              String             @id @default(cuid())
+  userId          String             @unique
+  sportId         String?
+  locationId      String?
+  dateOfBirth     DateTime?
+  category        PlayerCategory?
+  experienceLevel ExperienceLevel?
+  bio             String?
+  photoKey        String?
+  // Private: never exposed in public API responses
+  coachName       String?
+  coachContact    String?
+  academyName     String?
+
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+
+  user     User      @relation(fields: [userId], references: [id])
+  sport    Sport?    @relation(fields: [sportId], references: [id])
+  location Location? @relation(fields: [locationId], references: [id])
+
+  achievements        Achievement[]
+  events              Event[]
+  requirements        SponsorshipRequirement[]
+  sponsorships        Sponsorship[]
+  updates             SponsorshipUpdate[]
+  documents           Document[]
+  verificationRecords VerificationRecord[]     @relation("PlayerVerifications")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sportId, verificationStatus])
+  @@index([locationId])
+  @@index([category])
+}
+
+model SponsorProfile {
+  id                   String      @id @default(cuid())
+  userId               String      @unique
+  sponsorType          SponsorType @default(INDIVIDUAL)
+  displayName          String?
+  orgName              String?
+  locationId           String?
+  bio                  String?
+  isAnonymousByDefault Boolean     @default(false)
+
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+
+  user            User      @relation(fields: [userId], references: [id])
+  location        Location? @relation(fields: [locationId], references: [id])
+  preferredSports Sport[]   @relation("PreferredSports")
+
+  sponsorships        Sponsorship[]
+  documents           Document[]
+  verificationRecords VerificationRecord[] @relation("SponsorVerifications")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------- Player content ----------
+
+model Achievement {
+  id              String           @id @default(cuid())
+  playerId        String
+  title           String
+  level           ExperienceLevel?
+  year            Int?
+  description     String?
+  proofDocumentId String?
+
+  player PlayerProfile @relation(fields: [playerId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId])
+}
+
+model Event {
+  id                    String    @id @default(cuid())
+  playerId              String
+  name                  String
+  date                  DateTime?
+  venue                 String?
+  result                String?
+  estimatedExpensePaise Int?
+  isUpcoming            Boolean   @default(true)
+
+  player PlayerProfile @relation(fields: [playerId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId, date])
+}
+
+// ---------- Sponsorship ----------
+
+model SponsorshipRequirement {
+  id                String            @id @default(cuid())
+  playerId          String
+  title             String
+  description       String?
+  totalAmountPaise  Int
+  raisedAmountPaise Int               @default(0)
+  status            RequirementStatus @default(OPEN)
+  /// Display-only plan: [{ "label": string, "amountPaise": number }]
+  breakdown         Json?
+  deadline          DateTime?
+
+  player       PlayerProfile @relation(fields: [playerId], references: [id])
+  sponsorships Sponsorship[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId, status])
+  @@index([status])
+}
+
+model Counter {
+  id    String @id
+  value Int    @default(0)
+}
+
+model Sponsorship {
+  id            String  @id @default(cuid())
+  code          String  @unique
+  sponsorId     String
+  playerId      String
+  requirementId String?
+  amountPaise   Int
+  purpose       String
+  isAnonymous   Boolean @default(false)
+
+  status            SponsorshipStatus @default(ACTIVE)
+  paymentStatus     PaymentStatus     @default(CREATED)
+  utilizationStatus UtilizationStatus @default(NOT_STARTED)
+
+  razorpayOrderId   String? @unique
+  razorpayPaymentId String?
+
+  sponsor     SponsorProfile          @relation(fields: [sponsorId], references: [id])
+  player      PlayerProfile           @relation(fields: [playerId], references: [id])
+  requirement SponsorshipRequirement? @relation(fields: [requirementId], references: [id])
+
+  allocations  SponsorshipAllocation[]
+  updates      SponsorshipUpdate[]
+  documents    Document[]
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sponsorId, status])
+  @@index([playerId, status])
+  @@index([paymentStatus])
+}
+
+model SponsorshipAllocation {
+  id                String           @id @default(cuid())
+  sponsorshipId     String
+  label             String
+  amountPaise       Int
+  status            AllocationStatus @default(PLANNED)
+  receiptDocumentId String?
+  note              String?
+  completedAt       DateTime?
+
+  sponsorship Sponsorship @relation(fields: [sponsorshipId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sponsorshipId])
+}
+
+model SponsorshipUpdate {
+  id            String  @id @default(cuid())
+  playerId      String
+  /// Null = general profile update visible to everyone; set = linked to one sponsorship
+  sponsorshipId String?
+  title         String
+  body          String
+
+  player      PlayerProfile @relation(fields: [playerId], references: [id])
+  sponsorship Sponsorship?  @relation(fields: [sponsorshipId], references: [id])
+  attachments Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId, createdAt])
+  @@index([sponsorshipId])
+}
+
+// ---------- Attachments ----------
+
+model Document {
+  id             String       @id @default(cuid())
+  kind           DocumentKind
+  storageKey     String       @unique
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  uploaderUserId String
+
+  playerProfileId  String?
+  sponsorProfileId String?
+  sponsorshipId    String?
+  updateId         String?
+
+  uploader       User               @relation("UploadedDocuments", fields: [uploaderUserId], references: [id])
+  playerProfile  PlayerProfile?     @relation(fields: [playerProfileId], references: [id])
+  sponsorProfile SponsorProfile?    @relation(fields: [sponsorProfileId], references: [id])
+  sponsorship    Sponsorship?       @relation(fields: [sponsorshipId], references: [id])
+  update         SponsorshipUpdate? @relation(fields: [updateId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerProfileId])
+  @@index([sponsorProfileId])
+  @@index([sponsorshipId])
+  @@index([updateId])
+  @@index([uploaderUserId])
+}
+
+// ---------- Ops ----------
+
+model Notification {
+  id       String           @id @default(cuid())
+  userId   String
+  type     NotificationType
+  title    String
+  body     String
+  linkUrl  String?
+  readAt   DateTime?
+  emailedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+model VerificationRecord {
+  id               String             @id @default(cuid())
+  subjectPlayerId  String?
+  subjectSponsorId String?
+  reviewerUserId   String
+  decision         VerificationStatus
+  note             String?
+
+  subjectPlayer  PlayerProfile?  @relation("PlayerVerifications", fields: [subjectPlayerId], references: [id])
+  subjectSponsor SponsorProfile? @relation("SponsorVerifications", fields: [subjectSponsorId], references: [id])
+  reviewer       User            @relation("Reviewer", fields: [reviewerUserId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([subjectPlayerId])
+  @@index([subjectSponsorId])
+}
+
+model Transaction {
+  id                String          @id @default(cuid())
+  sponsorshipId     String
+  type              TransactionType @default(SPONSORSHIP_PAYMENT)
+  amountPaise       Int
+  currency          String          @default("INR")
+  provider          String          @default("RAZORPAY")
+  providerOrderId   String?
+  providerPaymentId String?
+  providerSignature String?
+  status            PaymentStatus
+  rawPayload        Json?
+  occurredAt        DateTime        @default(now())
+
+  sponsorship Sponsorship @relation(fields: [sponsorshipId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([providerPaymentId])
+  @@index([sponsorshipId])
+}

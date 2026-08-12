@@ -5,6 +5,8 @@ import cookieParser from "cookie-parser";
 import { pinoHttp } from "pino-http";
 import { config } from "./config.js";
 import { logger } from "./lib/logger.js";
+import { authRouter } from "./routes/auth.js";
+import { errorHandler, notFoundHandler } from "./middleware/errors.js";
 
 const app = express();
 
@@ -25,6 +27,11 @@ app.use(express.json());
 app.get("/api/health", (_req, res) => {
   res.json({ data: { status: "ok", service: "khelkhud-api" } });
 });
+
+app.use("/api/auth", authRouter);
+
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 app.listen(config.API_PORT, () => {
   logger.info(`khelkhud API listening on ${config.API_URL}`);
