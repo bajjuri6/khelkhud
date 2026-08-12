@@ -19,14 +19,36 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
+
+        // ── brand variants ────────────────────────────────────────────────────
+        // A flat fill with a hover that only swaps one colour reads as a wireframe. These
+        // three carry an actual physical model: a warm top-lit gradient, a shadow that
+        // grows on hover and collapses on press, and a hairline top highlight. Cheap in
+        // CSS, and the difference between "styled" and "designed".
+
         // The marigold call to action. Rationed by the brand: at most one per viewport
-        // (docs/brand-guidelines.md §3) — if a screen seems to need two, the second one
-        // is `outline` or `onDark`.
+        // (docs/brand-guidelines.md §3) — if a screen seems to need two, the second is
+        // `onLight` or `onDark`.
         accent:
-          "bg-marigold text-nightfall hover:bg-marigold-light focus-visible:ring-marigold/40",
-        // For predawn/nightfall bands, where `outline` disappears into the surface.
+          "bg-[linear-gradient(180deg,var(--kk-marigold-light),var(--kk-marigold))] text-nightfall " +
+          "shadow-[0_1px_0_rgba(255,255,255,0.35)_inset,0_2px_10px_-2px_rgba(232,135,58,0.55)] " +
+          "hover:shadow-[0_1px_0_rgba(255,255,255,0.45)_inset,0_6px_18px_-4px_rgba(232,135,58,0.7)] " +
+          "hover:brightness-[1.04] active:brightness-[0.97] " +
+          "active:shadow-[0_1px_0_rgba(255,255,255,0.3)_inset,0_1px_4px_-1px_rgba(232,135,58,0.5)] " +
+          "focus-visible:ring-marigold/45",
+
+        // On predawn/nightfall bands, where `outline` vanishes into the surface.
         onDark:
-          "border-cream/25 bg-transparent text-cream hover:border-cream/50 hover:bg-cream/10",
+          "border-cream/25 bg-cream/5 text-cream backdrop-blur-sm " +
+          "hover:border-cream/45 hover:bg-cream/12 active:bg-cream/8 " +
+          "focus-visible:ring-cream/40",
+
+        // The quiet secondary on cream surfaces — the companion to `accent` in a hero,
+        // where shadcn's `outline` is too faint against a photographic background.
+        onLight:
+          "border-ink/20 bg-cream/70 text-ink backdrop-blur-sm " +
+          "hover:border-ink/35 hover:bg-cream active:bg-cream-2 " +
+          "focus-visible:ring-ink/25",
       },
       size: {
         default:
@@ -34,9 +56,17 @@ const buttonVariants = cva(
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        // Site header scale. `sm` is 28px tall with 10px of horizontal padding — tuned for
+        // dense product toolbars, and in a 64px navbar it reads as a squashed chip.
+        nav: "h-9 gap-1.5 rounded-md px-4 text-sm",
         // Landing-page and checkout scale. The default sizes are tuned for dense product
         // chrome and read as tiny inside a hero.
-        hero: "h-12 gap-2 rounded-[min(var(--radius-lg),14px)] px-7 text-[0.95rem]",
+        //
+        // rounded-md (10px, the `control` token) rather than the 14px `card` radius the
+        // base class uses: at 48px tall, 14px corners start to look like a pill and lose
+        // the squared, deliberate feel the rest of the system has. Weight is bumped to
+        // semibold and tracking tightened slightly — at this size `font-medium` reads thin.
+        hero: "h-12 gap-2 rounded-md px-7 text-[0.95rem] font-semibold tracking-[-0.005em]",
         icon: "size-8",
         "icon-xs":
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",

@@ -44,28 +44,33 @@ lowercase `khelkhud`.
 
 ---
 
-## 2. The scroll arc
+## 2. Page rhythm: promise → problem → resolution
 
-The public site is staged as **one morning**. This is the system's signature move and the
-reason the palette is ordered the way it is.
+The site opens **in** the sunrise, not before it. The hero illustration is already full of
+warm light, so the page does not climb from night to day — it states the promise in
+daylight, goes dark exactly once to name what is blocking it, and comes back.
 
 ```
-  Predawn  ───────────────────────────────────────►  Full day
-  #0B0F20      #141B34      #E8873A      #FBF7F0
-  nightfall    predawn      marigold     cream
+  cream        cream-2     PREDAWN      marigold     cream        predawn
+  #FBF7F0      #F3EDE2     #141B34      #E8873A      #FBF7F0      #141B34
 
-  hero         the gap      the moment   the proof
-  (dark)       (dark)       (accent)     (light)
+  hero         ticker      the gap      the moment   the proof    the close
+  promise                  problem      resolution   evidence     tomorrow
 ```
 
-A visitor scrolls from night into day. Sections physically brighten. By the transparency
-band the page is cream and the athlete is competing. Never break the arc by putting a
-cream section above a predawn one in the middle of a page.
+**There is exactly one dark band in the body, and it is the section about the problem.**
+That is what earns it. A second one makes the page stripy and the contrast stops carrying
+any meaning — at which point dark is just decoration.
 
-**The one permitted exception is the close.** The final CTA band and the footer return to
-`predawn` and `nightfall` — the day ends, and tomorrow at 5am someone is on the ground
-again. That is the cycle the whole product exists inside, so the page is allowed to say
-it. Closing dark is a deliberate return, not a broken arc; anywhere else it is a bug.
+The close returns to `predawn` and `nightfall` for the footer: the day ends, and tomorrow
+morning someone is on the ground again. That is the cycle the product exists inside, so
+the page is allowed to say it.
+
+> **History, so nobody re-litigates it.** An earlier version ran a strict monotonic
+> night→day arc with a `nightfall` hero. It was replaced when the hero became a generated
+> sunrise illustration: a dark scrim heavy enough to carry cream text flattened the
+> artwork's warm light, which was the best thing about it. Legibility over a light image
+> comes from `ink` text and a cream scrim, not from darkening the picture.
 
 ---
 

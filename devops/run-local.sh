@@ -12,7 +12,7 @@
 #   ./devops/run-local.sh down
 #
 # The database is whatever DATABASE_URL in the repo-root .env points at — normally the
-# docker-compose Postgres on :5433. It does NOT touch production unless you point it there,
+# docker-compose Postgres on :5434. It does NOT touch production unless you point it there,
 # so read your .env before running this against anything that matters.
 
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
@@ -38,7 +38,7 @@ for image in "$WEB_IMAGE_NAME" "$API_IMAGE_NAME"; do
     || die "${image}:${VERSION} not found. Run: ./devops/build.sh ${VERSION}"
 done
 
-# The dev .env points DATABASE_URL at localhost:5433 (the docker-compose Postgres, as seen
+# The dev .env points DATABASE_URL at localhost:5434 (the docker-compose Postgres, as seen
 # from the host). Inside a container `localhost` is the container itself, so the API would
 # boot and then fail every query. Rewrite the host for the container's point of view.
 #
@@ -56,7 +56,7 @@ docker rm -f khelkhud-local-caddy khelkhud-local-web khelkhud-local-api >/dev/nu
 docker network create khelkhud-local >/dev/null 2>&1 || true
 
 # host.docker.internal lets the API reach a Postgres running on the host (the compose one
-# on :5433). Explicit --add-host because it is not automatic on Linux.
+# on :5434). Explicit --add-host because it is not automatic on Linux.
 #
 # WEB_URL / API_URL are overridden to :8080 because that is the single origin this stack
 # actually serves. The dev .env names :3000 and :4000, which would make the API mint

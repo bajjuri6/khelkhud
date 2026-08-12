@@ -14,6 +14,7 @@
     "dev:status": "./devops/run-dev.sh status",
     "local": "./devops/run-local.sh",
     "local:down": "./devops/run-local.sh down",
+    "brand:images": "tsx devops/generate-brand-images.ts",
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
@@ -22,6 +23,8 @@
     "db:studio": "pnpm --filter @khelkhud/api db:studio"
   },
   "devDependencies": {
+    "dotenv": "^16.6.1",
+    "tsx": "^4.23.12",
     "turbo": "^2.5.4"
   }
 }

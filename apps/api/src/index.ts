@@ -24,6 +24,17 @@ import { errorHandler, notFoundHandler } from "./middleware/errors.js";
 
 const app = express();
 
+// In production Caddy terminates TLS and proxies to this process, so every request
+// arrives from the container network and req.ip is the proxy, not the client. Without
+// this, the login rate limiter buckets the entire internet under one key — it stops being
+// a limiter and becomes a global lockout switch. (The sibling nybr project shipped
+// exactly this bug: "rate limiting behind a load balancer is decorative until trust proxy
+// is set".)
+//
+// The value is 1, not `true`: one hop, Caddy. `true` trusts the whole X-Forwarded-For
+// chain, which lets a client spoof its own address by sending the header.
+app.set("trust proxy", 1);
+
 // cross-origin resource policy relaxed so the web app (different port/origin)
 // can embed images served by this API
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));

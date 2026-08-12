@@ -15,7 +15,9 @@ emerging athletes with sponsors, built around transparent sponsorship tracking:
   `packages/theme/README.md`. **No app may hardcode a colour, font or radius.**
 - **`devops/`**: Azure deployment — one VM (web + api + Caddy under compose) in front of a
   managed PostgreSQL Flexible Server. See `devops/DEPLOYMENT_WORKFLOW.md`.
-- **Auth**: Sign in with Google (backend-driven OAuth, JWT session cookie)
+- **Auth**: email + password (scrypt, no native dependency) **and** Sign in with Google.
+  Both issue the same JWT session cookie. Login is rate-limited per IP+email; see
+  `apps/api/src/lib/password.ts` and `apps/api/src/middleware/rate-limit.ts`.
 - **Payments**: Razorpay test mode, with a built-in stub when keys are absent
 - **Email**: AWS SES, with console logging fallback in dev
 - **Files**: S3 presigned uploads, with a local-disk driver in dev
@@ -26,7 +28,7 @@ Prerequisites: Node 22, pnpm 10 (`corepack enable pnpm`), Docker Desktop.
 
 ```sh
 pnpm install
-docker compose up -d          # Postgres 16 on port 5433 (5432 is taken by a local install)
+docker compose up -d          # Postgres 16 on port 5434 (see docker-compose.yml for why not 5432/5433)
 copy .env.example .env        # then fill in the values below
 pnpm db:migrate
 pnpm db:seed                  # sports, locations, admin, demo players/sponsors
@@ -39,6 +41,9 @@ Required `.env` values:
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google Cloud Console OAuth client (Web type)
   with redirect URI `http://localhost:4000/api/auth/google/callback`
 - `ADMIN_EMAILS` — comma-separated emails that get the ADMIN role on login
+
+Google is **optional** in dev: without `GOOGLE_CLIENT_ID`/`SECRET` the "Continue with
+Google" button 503s, but email + password signup and signin work fully.
 
 Optional (features degrade gracefully without them):
 

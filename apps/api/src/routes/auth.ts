@@ -1,10 +1,12 @@
 import crypto from "node:crypto";
 import { Router } from "express";
 import { OAuth2Client } from "google-auth-library";
-import { roleSelectSchema } from "@khelkhud/shared";
+import { loginSchema, registerSchema, roleSelectSchema } from "@khelkhud/shared";
+import type { LoginInput, RegisterInput } from "@khelkhud/shared";
 import { config } from "../config.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
+import { DUMMY_HASH, hashPassword, verifyPassword } from "../lib/password.js";
 import {
   clearSessionCookie,
   setSessionCookie,
@@ -12,6 +14,7 @@ import {
 } from "../lib/session.js";
 import { requireAuth } from "../middleware/auth.js";
 import { ApiError } from "../middleware/errors.js";
+import { rateLimit } from "../middleware/rate-limit.js";
 import { validate } from "../middleware/validate.js";
 
 export const authRouter: Router = Router();
@@ -38,6 +41,107 @@ function dashboardPath(role: string | null): string {
       return "/onboarding";
   }
 }
+
+// ---------------------------------------------------------------------------
+// Native email + password
+//
+// Google stays the recommended path, but requiring it excludes people who have no Google
+// account or simply distrust social sign-in — which, for district athletes and small
+// individual sponsors, is a meaningful share of the intended users.
+//
+// Both handlers below return the SAME session cookie the OAuth callback issues, so every
+// downstream route, middleware and role check is unchanged.
+// ---------------------------------------------------------------------------
+
+// Registration is IP-limited only: there is no target account yet, so there is nothing
+// account-specific to key on. Generous enough for a shared connection, tight enough that
+// scripted signup floods need real infrastructure.
+const registerLimiter = rateLimit({ name: "register", max: 5, windowMs: 60 * 60 * 1000 });
+
+// Login is keyed on IP *and* submitted email. Keying on IP alone lets one attacker lock
+// out everyone behind the same NAT; keying on email alone lets them lock a known user out
+// of their own account from anywhere. Both together throttles the actual attack —
+// repeated guesses at one account — without either denial-of-service side effect.
+const loginLimiter = rateLimit({
+  name: "login",
+  max: 10,
+  windowMs: 15 * 60 * 1000,
+  keyOn: (req) => String((req.body as { email?: unknown })?.email ?? "").toLowerCase(),
+});
+
+authRouter.post("/register", registerLimiter, validate(registerSchema), async (req, res, next) => {
+  try {
+    const { name, email, password } = req.body as RegisterInput;
+
+    const existing = await prisma.user.findUnique({ where: { email } });
+
+    if (existing) {
+      // An account already on this email. Two cases, and they need different handling.
+      if (existing.passwordHash) {
+        throw new ApiError(
+          409,
+          "EMAIL_TAKEN",
+          "An account with this email already exists. Sign in instead.",
+        );
+      }
+      // Google-only account (or one pre-created by seed/admin). Do NOT set a password
+      // here just because someone knows the address — that is account takeover with extra
+      // steps. Point them at the flow that proves they control the account.
+      throw new ApiError(
+        409,
+        "USE_GOOGLE",
+        "This email is already registered with Google. Continue with Google to sign in.",
+      );
+    }
+
+    const isAdmin = config.adminEmails.includes(email);
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        passwordHash: await hashPassword(password),
+        role: isAdmin ? "ADMIN" : null,
+      },
+    });
+
+    setSessionCookie(res, await signSession({ uid: user.id, role: user.role }));
+    logger.info({ email, role: user.role }, "User registered (password)");
+
+    res.status(201).json({
+      data: { role: user.role, redirect: user.role === null ? "/onboarding" : dashboardPath(user.role) },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.post("/login", loginLimiter, validate(loginSchema), async (req, res, next) => {
+  try {
+    const { email, password } = req.body as LoginInput;
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    // One error for every failure mode — wrong email, wrong password, Google-only account,
+    // disabled account. Distinguishing them tells an attacker which emails are registered.
+    const invalid = new ApiError(401, "INVALID_CREDENTIALS", "Email or password is incorrect.");
+
+    // Always run scrypt, even when there is no user or no stored hash. Returning early
+    // makes a miss ~100ms faster than a hit, which is a usable account-enumeration oracle.
+    const hash = user?.passwordHash ?? DUMMY_HASH;
+    const ok = await verifyPassword(password, hash);
+
+    if (!user || !user.passwordHash || !ok) throw invalid;
+    if (!user.isActive) throw invalid;
+
+    setSessionCookie(res, await signSession({ uid: user.id, role: user.role }));
+    logger.info({ email, role: user.role }, "User signed in (password)");
+
+    res.json({
+      data: { role: user.role, redirect: user.role === null ? "/onboarding" : dashboardPath(user.role) },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 authRouter.get("/google", (req, res) => {
   if (!config.GOOGLE_CLIENT_ID) {

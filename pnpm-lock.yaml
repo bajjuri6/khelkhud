@@ -8,6 +8,12 @@ importers:
 
   .:
     devDependencies:
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
       turbo:
         specifier: ^2.5.4
         version: 2.10.9

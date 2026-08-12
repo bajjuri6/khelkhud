@@ -42,9 +42,9 @@ kill_port() {
 start_db() {
   require_cmd docker
   if docker compose ps db --status running 2>/dev/null | grep -q khelkhud-db; then
-    info "Postgres already running on :5433"
+    info "Postgres already running on :5434"
   else
-    info "Starting Postgres on :5433"
+    info "Starting Postgres on :5434"
     docker compose up -d db
   fi
 }
@@ -76,15 +76,67 @@ start_service() {
   fi
 }
 
+# Kill a process AND everything it spawned, children first.
+#
+# `pnpm --filter X dev` is three processes deep: pnpm -> tsx watch (or next) -> the server
+# that actually binds the port. Killing only the listener and the recorded pnpm pid leaves
+# the middle supervisor alive, still holding a full set of file watchers.
+#
+# That leaked one watcher process per restart here, and it is not a cosmetic leak: after
+# about nine restarts the orphans exhausted the machine's file-descriptor budget, turbopack
+# could no longer watch the app directory, and EVERY route started returning 404 with only
+# `EMFILE: too many open files` in the log to explain it.
+#
+# Children before parents, so a supervisor cannot respawn a child on the way down.
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    kill_tree "$child"
+  done
+  kill -9 "$pid" 2>/dev/null || true
+}
+
+# `quiet` suppresses the "stopped" line when there was nothing to stop, so a bare
+# `run-dev.sh` on a cold machine doesn't announce that it stopped two things that were
+# never running.
 stop_service() {
-  local svc="$1" port="$2"
-  kill_port "$port"
+  local svc="$1" port="$2" quiet="${3:-}"
   local pidfile="${LOG_DIR}/.${svc}.pid"
+  local was_running=0
+
+  is_port_in_use "$port" && was_running=1
+
   if [[ -f "$pidfile" ]]; then
-    kill -9 "$(cat "$pidfile")" 2>/dev/null || true
+    kill_tree "$(cat "$pidfile")"
     rm -f "$pidfile"
   fi
+  # Backstop for anything the tree walk missed (a pid file lost to a hard kill, say).
+  kill_port "$port"
+
+  if [[ -n "$quiet" && $was_running -eq 0 ]]; then
+    return 0
+  fi
   ok "${svc} stopped"
+}
+
+# Sweep orphans from before kill_tree existed, or from a session that ended abruptly.
+#
+# The pattern matches the real command line, which is NOT "tsx watch": tsx is invoked as
+# `node <repo>/apps/api/node_modules/.bin/../tsx/dist/cli.mjs watch src`. An earlier
+# version of this matched the literal "tsx watch" and therefore reaped nothing at all.
+#
+# kill -9, not the default SIGTERM: these are the processes that already survived a normal
+# stop, which is precisely why they are still here.
+#
+# Anchored on the repo root so it can never touch another project's dev server.
+reap_orphans() {
+  local root pids
+  root="$(repo_root)"
+  pids="$(pgrep -f "${root}.*tsx/dist/cli\.mjs watch" 2>/dev/null || true)"
+  [[ -z "$pids" ]] && return 0
+  warn "Reaping $(echo "$pids" | wc -w | tr -d ' ') orphaned watcher process(es) from earlier runs"
+  # shellcheck disable=SC2086
+  kill -9 $pids 2>/dev/null || true
 }
 
 status_service() {
@@ -106,6 +158,13 @@ case "${1:-both}" in
     ;;
   both|all|"")
     [[ -f .env ]] || warn "No .env at the repo root — copy .env.example first or the API will refuse to boot."
+    # Stop the tracked processes FIRST, so a bare invocation on an already-running stack is
+    # a clean restart rather than a half-kill. It also means reap_orphans below only ever
+    # sees genuine orphans — run the other way round it reports the LIVE watcher as
+    # "orphaned from earlier runs", which is both alarming and untrue.
+    stop_service web "$APP_PORT_WEB" quiet
+    stop_service api "$APP_PORT_API" quiet
+    reap_orphans
     start_db
     # The theme's CSS is a build artifact of tokens.ts. Regenerate before web starts, or a
     # token change edited during the last session silently won't be in the dev server.
