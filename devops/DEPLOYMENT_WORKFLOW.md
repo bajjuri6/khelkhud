@@ -104,9 +104,37 @@ git push origin main
 ```
 
 `deploy.sh` refreshes the SSH firewall rule, copies `compose.prod.yml` and `Caddyfile`,
-pulls the images, runs `prisma migrate deploy` **before** starting the new containers, then
-rolls the stack and polls `/api/health`. If migrations fail it aborts without touching the
-running containers.
+pulls the images, applies migrations **before** starting the new containers, then rolls the
+stack and polls `/api/health`. If migrations fail it aborts without touching the running
+containers.
+
+### Migrations run from your machine, not from a container
+
+The app image does not ship the Prisma CLI. It and its peers — `prisma`,
+`@prisma/engines`, `effect`, `typescript`, `fast-check` — came to **218 MB**, carried on
+every pull, to serve one command per release. The generated client keeps its own query
+engine, so the running API needs none of it.
+
+So `deploy.sh` reads `DATABASE_URL` from the VM's `.env` over SSH and runs
+`prisma migrate deploy` locally, refreshing the Postgres `operator` firewall rule on the
+way through (your IP rotates, exactly like the SSH rule).
+
+What this costs: a deploy now needs Node and the repo on the machine running it — which
+`deploy.sh` already required — and network reach to the database. A deploy from a machine
+outside the Postgres firewall will fail at the migration step, before touching the running
+stack.
+
+What it buys, measured:
+
+| | on VM disk | over the wire |
+|---|---|---|
+| api, first version | 917 MB | 206 MB |
+| api, compiled + CLI stripped | **567 MB** | **122 MB** |
+| web | 476 MB | 105 MB |
+
+If you ever want migrations hermetic again, put `prisma` back in `dependencies`, delete the
+`rm -rf` in `Dockerfile.api`'s deps stage, and restore a `migrate` service to
+`compose.prod.yml`. The tradeoff is the 218 MB.
 
 Build one image only when that is all that changed:
 

@@ -35,7 +35,7 @@ RUN apt-get update \
 WORKDIR /repo
 
 # ---------------------------------------------------------------------------
-# deps — production dependencies only.
+# deps — production dependencies, the generated Prisma client, and nothing else.
 #
 # Every workspace manifest is copied even though only the api subtree is installed: pnpm
 # validates the lockfile against every importer it declares, and a missing manifest fails
@@ -50,16 +50,33 @@ COPY packages/theme/package.json  ./packages/theme/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --prod --frozen-lockfile --filter "@khelkhud/api..."
 
-# Generate the Prisma client straight into the PRODUCTION tree, so the runner can copy one
-# node_modules and be done. The alternative — generating in the builder and copying the
-# client across — means naming pnpm's content-addressed .pnpm directory, which embeds the
-# resolved version and its peer hash and breaks silently on the next Prisma bump.
-# Only the schema is copied, so a source edit does not bust this layer.
+# Generate the client, then delete the tooling that produced it — in ONE layer, so none of
+# it is ever committed to the image.
+#
+# Why `prisma` is declared a dependency rather than a devDependency: --prod would not
+# install it otherwise, and the CLI is what runs `generate`. It is build-time only, and the
+# rm below is what makes that true in the artifact.
+#
+# What goes: prisma (66 MB), @prisma/engines (34 MB), plus effect / typescript /
+# fast-check, which exist solely as the CLI's dependencies and peers. ~218 MB total.
+# What stays: @prisma/client and the generated client, which carries its own query engine —
+# verified by running the built image against a real database.
+#
+# `pnpm prune --prod` is NOT the tool for this: it prompts for confirmation (hanging a
+# non-TTY build) and reinstalls node_modules from scratch, which would delete the very
+# client this stage just generated.
 COPY apps/api/prisma ./apps/api/prisma
-RUN pnpm --filter @khelkhud/api exec prisma generate
+RUN pnpm --filter @khelkhud/api exec prisma generate \
+ && rm -rf node_modules/.pnpm/prisma@* \
+           node_modules/.pnpm/@prisma+engines@* \
+           node_modules/.pnpm/effect@* \
+           node_modules/.pnpm/typescript@* \
+           node_modules/.pnpm/fast-check@* \
+           node_modules/.bin/prisma* \
+           apps/api/node_modules/.bin/prisma*
 
 # ---------------------------------------------------------------------------
-# builder — full dependencies, generate the client, compile both workspaces.
+# builder — full dependencies, compile both workspaces.
 # ---------------------------------------------------------------------------
 FROM base AS builder
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -70,16 +87,16 @@ COPY packages/theme/package.json  ./packages/theme/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "@khelkhud/api..."
 
-# tsconfig.base.json is NOT optional here. Both workspace tsconfigs `extends` it, and
-# without the file tsc quietly falls back to its ES5 defaults — which fails with
-# "Cannot find name 'Map'" from inside zod's type declarations, an error that looks like a
-# dependency problem and is actually a missing 18-line config file.
+# tsconfig.base.json is NOT optional. Both workspace tsconfigs `extends` it, and without
+# the file tsc quietly falls back to its ES5 defaults — which fails with "Cannot find name
+# 'Map'" from inside zod's declarations, an error that looks like a dependency problem and
+# is actually a missing 18-line config file.
 COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY apps/api        ./apps/api
 
+# The api's tsc needs the client's generated types, and shared's emitted .d.ts.
 RUN pnpm --filter @khelkhud/api exec prisma generate
-# shared first — the api's tsc reads its emitted .d.ts.
 RUN pnpm --filter @khelkhud/shared build
 RUN pnpm --filter @khelkhud/api build
 

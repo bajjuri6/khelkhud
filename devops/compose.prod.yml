@@ -61,26 +61,16 @@ services:
       # replacing the container does not delete them. backup.sh archives it nightly.
       - api_uploads:/repo/apps/api/uploads
 
-  # One-shot. Never starts with the stack:
-  #   docker compose -f compose.prod.yml --profile migrate run --rm migrate
-  # deploy.sh runs this BEFORE rolling the app containers.
-  migrate:
-    image: ${REGISTRY}/khelkhud-api:${VERSION:-latest}
-    profiles: ["migrate"]
-    env_file:
-      - .env
-    environment:
-      NODE_ENV: production
-    # Direct binary, not `pnpm exec` — see the CMD note in Dockerfile.api: corepack cannot
-    # write to the `app` user's home, so anything routed through pnpm dies at start.
-    #
-    # Path is relative to the image WORKDIR (/repo/apps/api), which is also why no
-    # --schema flag is needed: prisma finds ./prisma/schema.prisma from there. If the
-    # WORKDIR moves, this breaks — it did once already.
-    command:
-      - node_modules/.bin/prisma
-      - migrate
-      - deploy
+  # There is deliberately NO `migrate` service here.
+  #
+  # The app image no longer ships the Prisma CLI — it and its peers (prisma,
+  # @prisma/engines, effect, typescript, fast-check) were 218 MB of an image that only
+  # needed them for one command per release. The generated client keeps its own query
+  # engine, so the running API is unaffected.
+  #
+  # deploy.sh now applies migrations from the operator's machine before rolling the
+  # containers, against the same database, over the Postgres firewall rule it refreshes on
+  # the way through. See DEPLOYMENT_WORKFLOW.md for the tradeoff that buys.
 
 volumes:
   caddy_data:

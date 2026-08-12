@@ -90,12 +90,36 @@ info "Pulling ${VERSION}"
 ssh_vm "cd ${REMOTE_DIR} && ${COMPOSE} pull web api"
 
 # ---- migrations --------------------------------------------------------------
-# Before the new containers start, so the schema is never behind the code that queries it.
-# `prisma migrate deploy` applies only pending migrations and is a no-op when there are
-# none, which makes it safe on every deploy.
+# Applied from THIS machine, not from a container.
+#
+# The app image deliberately does not ship the Prisma CLI (218 MB for one command per
+# release — see the note in compose.prod.yml). The tradeoff is that a deploy now needs
+# node + the repo locally, which it already did, and network reach to the database, which
+# the operator firewall rule below provides.
+#
+# Still before the containers roll, so the schema is never behind the code querying it.
+# `prisma migrate deploy` only applies pending migrations and is a no-op when there are
+# none, so it is safe on every deploy.
 if [[ $SKIP_MIGRATE -eq 0 ]]; then
+  require_cmd pnpm
+
+  # The operator IP rotates, exactly like the SSH rule refreshed above.
+  info "Refreshing the Postgres firewall for ${MY_IP}"
+  az_cli postgres flexible-server firewall-rule update \
+    --resource-group "$AZ_RG" --name "$PG_SERVER" --rule-name operator \
+    --start-ip-address "$MY_IP" --end-ip-address "$MY_IP" -o none 2>/dev/null \
+  || az_cli postgres flexible-server firewall-rule create \
+       --resource-group "$AZ_RG" --name "$PG_SERVER" --rule-name operator \
+       --start-ip-address "$MY_IP" --end-ip-address "$MY_IP" -o none \
+  || warn "Could not refresh the Postgres firewall — migrations may fail to connect."
+
+  # Read the connection string from the VM rather than keeping a second copy anywhere.
+  # Captured into a variable and never echoed; it is the production database password.
   info "Applying database migrations"
-  ssh_vm "cd ${REMOTE_DIR} && ${COMPOSE} --profile migrate run --rm migrate" \
+  DB_URL="$(ssh_vm "grep '^DATABASE_URL=' ${REMOTE_DIR}/.env | cut -d= -f2-")"
+  [[ -n "$DB_URL" ]] || die "Could not read DATABASE_URL from ${REMOTE_DIR}/.env on the VM."
+
+  DATABASE_URL="$DB_URL" pnpm --filter @khelkhud/api exec prisma migrate deploy \
     || die "Migrations failed — the running stack was NOT touched. Fix and re-run."
   ok "Migrations applied"
 else
