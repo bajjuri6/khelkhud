@@ -60,6 +60,29 @@ fi
 PG_HOST="$(az_cli postgres flexible-server show -g "$AZ_RG" -n "$PG_SERVER" \
   --query fullyQualifiedDomainName -o tsv)"
 
+# ---- extension allow-list -----------------------------------------------------
+#
+# Azure Flexible Server gates CREATE EXTENSION behind the `azure.extensions` server
+# parameter, SEPARATELY from whether the extension is available. Querying
+# pg_available_extensions shows all three as present and tells you nothing about whether
+# you may create them — which is exactly how the village_search migration got written,
+# reviewed, tested locally, and then failed in production with
+# "extension pg_trgm is not allow-listed for users".
+#
+# Set at provisioning time so a fresh environment never repeats that. Dynamic parameter,
+# so no restart and no downtime.
+#
+#   pg_trgm        trigram similarity + the GIN index behind village search
+#   unaccent       diacritic folding in the match score
+#   fuzzystrmatch  transliteration tolerance
+info "Allow-listing the extensions village search needs"
+az_cli postgres flexible-server parameter set \
+  --resource-group "$AZ_RG" --server-name "$PG_SERVER" \
+  --name azure.extensions --value "PG_TRGM,UNACCENT,FUZZYSTRMATCH" \
+  -o none \
+  && ok "azure.extensions set" \
+  || warn "Could not set azure.extensions — the village_search migration will fail until it is."
+
 # ---- firewall ----------------------------------------------------------------
 add_fw_rule() {
   local name="$1" ip="$2"
