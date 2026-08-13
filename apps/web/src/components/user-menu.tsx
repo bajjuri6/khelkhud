@@ -37,10 +37,10 @@ export function UserMenu({ me }: { me: Me }) {
           <AvatarFallback>{initials || "U"}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-auto min-w-56 max-w-xs">
         <DropdownMenuLabel>
           <div className="text-sm font-medium">{me.name}</div>
-          <div className="text-xs text-muted-foreground">{me.email}</div>
+          <div className="text-xs break-all text-muted-foreground">{me.email}</div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void logout()}>Sign out</DropdownMenuItem>
