@@ -16,6 +16,8 @@ function dashboardPath(role: Me["role"]): string {
       return "/dashboard/athlete";
     case "SPONSOR":
       return "/dashboard/sponsor";
+    case "COORDINATOR":
+      return "/dashboard/coordinator";
     case "ADMIN":
       return "/admin";
     default:

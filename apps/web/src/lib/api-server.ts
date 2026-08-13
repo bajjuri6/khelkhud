@@ -38,7 +38,7 @@ export type Me = {
   email: string;
   name: string;
   avatarUrl: string | null;
-  role: "ATHLETE" | "SPONSOR" | "ADMIN" | null;
+  role: "ATHLETE" | "COORDINATOR" | "SPONSOR" | "SUPPLIER" | "ADMIN" | null;
   athleteProfile: { id: string; verificationStatus: string; sportId: string | null } | null;
   sponsorProfile: { id: string; verificationStatus: string; displayName: string | null } | null;
 };
