@@ -1,5 +1,7 @@
 import { Router } from "express";
 import {
+  coordinatorAppointSchema,
+  coordinatorUpdateSchema,
   locationCreateSchema,
   locationUpdateSchema,
   sportCreateSchema,
@@ -11,6 +13,7 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { ApiError } from "../middleware/errors.js";
 import { validate } from "../middleware/validate.js";
 import { notify } from "../services/notify.js";
+import type { CoordinatorAppointInput, CoordinatorUpdateInput } from "@khelkhud/shared";
 
 export const adminRouter: Router = Router();
 
@@ -360,3 +363,131 @@ adminRouter.patch("/locations/:id", validate(locationUpdateSchema), async (req, 
     next(err);
   }
 });
+
+// ---------- Coordinators ----------
+//
+// Appointing a coordinator is a delegation of trust: from this point their word validates
+// athletes and requests in their villages without an admin in the loop. So appointedById
+// is recorded, and deactivation is a flag rather than a delete — the VerificationRecords
+// they signed have to keep resolving to a real person.
+
+adminRouter.get("/coordinators", async (_req, res, next) => {
+  try {
+    const rows = await prisma.coordinatorProfile.findMany({
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        appointedBy: { select: { name: true, email: true } },
+        villages: { select: { id: true, name: true, displayPath: true } },
+        _count: { select: { requestsValidated: true } },
+      },
+      orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+    });
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/coordinators", validate(coordinatorAppointSchema), async (req, res, next) => {
+  try {
+    const { email, name, designation, phone, villageIds } = req.body as CoordinatorAppointInput;
+
+    // Every id must be a real VILLAGE. Silently accepting a district id would hand someone
+    // authority over a few hundred villages instead of one.
+    const villages = await prisma.location.findMany({
+      where: { id: { in: villageIds }, level: "VILLAGE" },
+      select: { id: true },
+    });
+    if (villages.length !== villageIds.length) {
+      throw new ApiError(
+        400,
+        "INVALID_VILLAGE",
+        "One or more of those are not villages. Coordinators are appointed to villages, not districts.",
+      );
+    }
+
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { role: "COORDINATOR" },
+      create: { email, name, role: "COORDINATOR" },
+    });
+
+    const existing = await prisma.coordinatorProfile.findUnique({ where: { userId: user.id } });
+    if (existing) {
+      throw new ApiError(
+        409,
+        "ALREADY_COORDINATOR",
+        "That person is already a coordinator. Edit their villages instead.",
+      );
+    }
+
+    const profile = await prisma.coordinatorProfile.create({
+      data: {
+        userId: user.id,
+        designation,
+        phone: phone ?? null,
+        appointedById: req.user!.uid,
+        villages: { connect: villages.map((v) => ({ id: v.id })) },
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        villages: { select: { id: true, name: true, displayPath: true } },
+      },
+    });
+
+    await notify(user.id, "SYSTEM", {
+      title: "You are now a khelkhud village coordinator",
+      body: `You can validate requests for ${profile.villages.length} village(s). Anything you raise yourself goes live immediately.`,
+      linkUrl: "/dashboard/coordinator",
+    });
+
+    res.status(201).json({ data: profile });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.patch(
+  "/coordinators/:id",
+  validate(coordinatorUpdateSchema),
+  async (req, res, next) => {
+    try {
+      const body = req.body as CoordinatorUpdateInput;
+      const profile = await prisma.coordinatorProfile.findUnique({
+        where: { id: String(req.params.id) },
+      });
+      if (!profile) throw new ApiError(404, "NOT_FOUND", "Coordinator not found");
+
+      if (body.villageIds) {
+        const villages = await prisma.location.findMany({
+          where: { id: { in: body.villageIds }, level: "VILLAGE" },
+          select: { id: true },
+        });
+        if (villages.length !== body.villageIds.length) {
+          throw new ApiError(400, "INVALID_VILLAGE", "One or more of those are not villages");
+        }
+      }
+
+      const updated = await prisma.coordinatorProfile.update({
+        where: { id: profile.id },
+        data: {
+          designation: body.designation,
+          phone: body.phone,
+          isActive: body.isActive,
+          // `set` replaces the whole assignment rather than adding to it, so removing a
+          // village actually removes the authority.
+          villages: body.villageIds
+            ? { set: body.villageIds.map((id) => ({ id })) }
+            : undefined,
+        },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          villages: { select: { id: true, name: true, displayPath: true } },
+        },
+      });
+      res.json({ data: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
