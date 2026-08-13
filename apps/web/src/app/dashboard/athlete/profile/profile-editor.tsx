@@ -23,7 +23,7 @@ import {
   CATEGORY_LABELS,
   LEVEL_LABELS,
   type Location,
-  type PlayerProfileMe,
+  type AthleteProfileMe,
   type Sport,
 } from "@/lib/types";
 import { AchievementsTab } from "./achievements-tab";
@@ -34,7 +34,7 @@ export function ProfileEditor({
   sports,
   locations,
 }: {
-  profile: PlayerProfileMe;
+  profile: AthleteProfileMe;
   sports: Sport[];
   locations: Location[];
 }) {
@@ -75,9 +75,9 @@ export function ProfileEditor({
   async function onPhotoPicked(file: File | undefined) {
     if (!file) return;
     try {
-      const doc = await uploadFile(file, "PROFILE_PHOTO", { playerProfileId: profile.id });
+      const doc = await uploadFile(file, "PROFILE_PHOTO", { athleteProfileId: profile.id });
       setPhotoKey(doc.storageKey);
-      await apiClient("/api/players/me", {
+      await apiClient("/api/athletes/me", {
         method: "PUT",
         body: JSON.stringify({ photoKey: doc.storageKey }),
       });
@@ -91,7 +91,7 @@ export function ProfileEditor({
   async function save() {
     setSaving(true);
     try {
-      await apiClient("/api/players/me", {
+      await apiClient("/api/athletes/me", {
         method: "PUT",
         body: JSON.stringify({
           sportId: form.sportId || null,

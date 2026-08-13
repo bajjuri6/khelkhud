@@ -18,17 +18,17 @@ import {
   recomputeUtilization,
 } from "../services/sponsorship.service.js";
 
-/** Loads a sponsorship and asserts the caller is its player-owner. */
-async function playerOwnedSponsorship(id: string, uid: string) {
+/** Loads a sponsorship and asserts the caller is its athlete-owner. */
+async function athleteOwnedSponsorship(id: string, uid: string) {
   const sponsorship = await prisma.sponsorship.findUnique({
     where: { id },
     include: {
-      player: { select: { userId: true } },
+      athlete: { select: { userId: true } },
       sponsor: { select: { userId: true } },
       allocations: true,
     },
   });
-  if (!sponsorship || sponsorship.player.userId !== uid) {
+  if (!sponsorship || sponsorship.athlete.userId !== uid) {
     throw new ApiError(404, "NOT_FOUND", "Sponsorship not found");
   }
   if (sponsorship.paymentStatus !== "PAID") {
@@ -94,11 +94,11 @@ sponsorshipsRouter.post(
 sponsorshipsRouter.post(
   "/:id/allocations",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   validate(allocationCreateSchema),
   async (req, res, next) => {
     try {
-      const sponsorship = await playerOwnedSponsorship(String(req.params.id), req.user!.uid);
+      const sponsorship = await athleteOwnedSponsorship(String(req.params.id), req.user!.uid);
       const allocatedSoFar = sponsorship.allocations.reduce((s, a) => s + a.amountPaise, 0);
       if (allocatedSoFar + req.body.amountPaise > sponsorship.amountPaise) {
         throw new ApiError(
@@ -121,11 +121,11 @@ sponsorshipsRouter.post(
 sponsorshipsRouter.patch(
   "/:id/allocations/:allocationId",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   validate(allocationUpdateSchema),
   async (req, res, next) => {
     try {
-      const sponsorship = await playerOwnedSponsorship(String(req.params.id), req.user!.uid);
+      const sponsorship = await athleteOwnedSponsorship(String(req.params.id), req.user!.uid);
       const existing = sponsorship.allocations.find(
         (a) => a.id === String(req.params.allocationId),
       );
@@ -160,7 +160,7 @@ sponsorshipsRouter.patch(
       await recomputeUtilization(sponsorship.id);
 
       if (req.body.status && req.body.status !== existing.status) {
-        await notify(sponsorship.sponsor.userId, "PLAYER_UPDATE", {
+        await notify(sponsorship.sponsor.userId, "ATHLETE_UPDATE", {
           title: `Utilization update on ${sponsorship.code}`,
           body: `"${allocation.label}" is now ${allocation.status.toLowerCase()}.`,
           linkUrl: `/dashboard/sponsor/sponsorships/${sponsorship.id}`,
@@ -179,8 +179,8 @@ sponsorshipsRouter.get("/:id", requireAuth, async (req, res, next) => {
       where: { id: String(req.params.id) },
       include: {
         sponsor: { include: { user: { select: { name: true, avatarUrl: true } } } },
-        player: { include: { user: { select: { name: true, avatarUrl: true } } } },
-        requirement: true,
+        athlete: { include: { user: { select: { name: true, avatarUrl: true } } } },
+        request: true,
         allocations: { orderBy: { createdAt: "asc" } },
         updates: {
           orderBy: { createdAt: "desc" },
@@ -194,15 +194,15 @@ sponsorshipsRouter.get("/:id", requireAuth, async (req, res, next) => {
 
     const uid = req.user!.uid;
     const isSponsor = sponsorship.sponsor.userId === uid;
-    const isPlayer = sponsorship.player.userId === uid;
+    const isAthlete = sponsorship.athlete.userId === uid;
     const isAdmin = req.user!.role === "ADMIN";
-    if (!isSponsor && !isPlayer && !isAdmin) {
+    if (!isSponsor && !isAthlete && !isAdmin) {
       throw new ApiError(403, "FORBIDDEN", "You cannot view this sponsorship");
     }
 
-    // Respect sponsor anonymity toward the player.
+    // Respect sponsor anonymity toward the athlete.
     const sponsorView =
-      sponsorship.isAnonymous && isPlayer && !isAdmin
+      sponsorship.isAnonymous && isAthlete && !isAdmin
         ? { displayName: "Anonymous sponsor", user: { name: "Anonymous", avatarUrl: null } }
         : {
             displayName: sponsorship.sponsor.displayName,
@@ -223,18 +223,18 @@ sponsorshipsRouter.get("/:id", requireAuth, async (req, res, next) => {
         utilizationStatus: sponsorship.utilizationStatus,
         createdAt: sponsorship.createdAt,
         sponsor: sponsorView,
-        player: {
-          id: sponsorship.player.id,
-          name: sponsorship.player.user.name,
-          avatarUrl: sponsorship.player.user.avatarUrl,
-          photoKey: sponsorship.player.photoKey,
+        athlete: {
+          id: sponsorship.athlete.id,
+          name: sponsorship.athlete.user.name,
+          avatarUrl: sponsorship.athlete.user.avatarUrl,
+          photoKey: sponsorship.athlete.photoKey,
         },
-        requirement: sponsorship.requirement,
+        request: sponsorship.request,
         allocations: sponsorship.allocations,
         updates: sponsorship.updates,
         documents: sponsorship.documents,
         transactions: isAdmin || isSponsor ? sponsorship.transactions : undefined,
-        viewer: { isSponsor, isPlayer, isAdmin },
+        viewer: { isSponsor, isAthlete, isAdmin },
       },
     });
   } catch (err) {

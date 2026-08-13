@@ -7,7 +7,7 @@ import { config } from "./config.js";
 import { logger } from "./lib/logger.js";
 import { authRouter } from "./routes/auth.js";
 import { metaRouter } from "./routes/meta.js";
-import { playersRouter } from "./routes/players.js";
+import { athletesRouter } from "./routes/athletes.js";
 import { sponsorsRouter } from "./routes/sponsors.js";
 import { sponsorshipsRouter } from "./routes/sponsorships.js";
 import { razorpayWebhookBodyParser, razorpayWebhookHandler } from "./routes/webhooks.js";
@@ -59,7 +59,7 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api/auth", authRouter);
 app.use("/api/meta", metaRouter);
-app.use("/api/players", playersRouter);
+app.use("/api/athletes", athletesRouter);
 app.use("/api/sponsors", sponsorsRouter);
 app.use("/api/sponsorships", sponsorshipsRouter);
 app.use("/api/updates", updatesRouter);

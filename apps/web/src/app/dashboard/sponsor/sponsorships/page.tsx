@@ -18,7 +18,7 @@ type SponsorshipRow = {
   paymentStatus: string;
   utilizationStatus: string;
   createdAt: string;
-  player: {
+  athlete: {
     id: string;
     photoKey: string | null;
     user: { name: string; avatarUrl: string | null };
@@ -54,22 +54,22 @@ export default async function SponsorSponsorshipsPage() {
       ) : (
         <div className="mt-6 grid gap-4">
           {sponsorships.map((s) => {
-            const photo = profilePhotoUrl(s.player.photoKey) ?? s.player.user.avatarUrl;
+            const photo = profilePhotoUrl(s.athlete.photoKey) ?? s.athlete.user.avatarUrl;
             return (
               <Card key={s.id}>
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
                   <div className="flex items-center gap-3">
                     <Avatar className="size-12">
-                      {photo ? <AvatarImage src={photo} alt={s.player.user.name} /> : null}
-                      <AvatarFallback>{s.player.user.name[0]}</AvatarFallback>
+                      {photo ? <AvatarImage src={photo} alt={s.athlete.user.name} /> : null}
+                      <AvatarFallback>{s.athlete.user.name[0]}</AvatarFallback>
                     </Avatar>
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{s.player.user.name}</span>
+                        <span className="font-medium">{s.athlete.user.name}</span>
                         <span className="font-mono text-xs text-muted-foreground">{s.code}</span>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {[s.player.sport?.name, s.purpose].filter(Boolean).join(" · ")}
+                        {[s.athlete.sport?.name, s.purpose].filter(Boolean).join(" · ")}
                       </p>
                       {s.updates[0] ? (
                         <p className="mt-0.5 text-xs text-muted-foreground">

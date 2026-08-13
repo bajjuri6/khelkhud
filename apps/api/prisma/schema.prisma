@@ -10,8 +10,14 @@ datasource db {
 // ---------- Enums ----------
 
 enum Role {
-  PLAYER
+  ATHLETE
+  /// Village-level validator: a PET teacher, sarpanch, or similar publicly visible
+  /// villager. Anything they raise is validated on arrival because they ARE the validator.
+  COORDINATOR
   SPONSOR
+  /// Sporting-goods manufacturer, distributor or retailer. CRUDs its own catalogue once an
+  /// admin grants permission.
+  SUPPLIER
   ADMIN
 }
 
@@ -28,7 +34,7 @@ enum SponsorType {
   ORGANIZATION
 }
 
-enum PlayerCategory {
+enum AthleteCategory {
   UNDER_12
   UNDER_15
   UNDER_19
@@ -70,13 +76,6 @@ enum AllocationStatus {
   COMPLETED
 }
 
-enum RequirementStatus {
-  OPEN
-  PARTIALLY_FUNDED
-  FULLY_FUNDED
-  CLOSED
-}
-
 enum DocumentKind {
   ID_PROOF
   ACHIEVEMENT_PROOF
@@ -88,7 +87,7 @@ enum DocumentKind {
 
 enum NotificationType {
   SPONSORSHIP_RECEIVED
-  PLAYER_UPDATE
+  ATHLETE_UPDATE
   VERIFICATION_RESULT
   PAYMENT_CONFIRMED
   INFO_REQUESTED
@@ -103,7 +102,23 @@ enum TransactionType {
 enum LocationLevel {
   STATE
   DISTRICT
+  /// Sub-district. "Mandal" in Telangana/AP; tehsil or block elsewhere.
+  MANDAL
+  VILLAGE
   CITY
+}
+
+/// Where a Location row came from. Drives how much it can be trusted and what still needs
+/// reconciling against the government directory.
+enum LocationSource {
+  /// Local Government Directory - the authoritative government registry.
+  LGD
+  /// India Post. A branch post office is almost always sited in a village and named after
+  /// it, which makes it a good proxy - but it is a proxy, and carries no LGD code.
+  INDIA_POST
+  /// Added by a coordinator or admin because the datasets missed it. A dataset gap must
+  /// never block a real athlete; these are queued for reconciliation.
+  MANUAL
 }
 
 // ---------- Core ----------
@@ -122,8 +137,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  playerProfile  PlayerProfile?
-  sponsorProfile SponsorProfile?
+  athleteProfile     AthleteProfile?
+  sponsorProfile     SponsorProfile?
+  coordinatorProfile CoordinatorProfile? @relation("CoordinatorUser")
+
+  coordinatorsAppointed CoordinatorProfile[] @relation("CoordinatorAppointer")
+  institutionsCustodied Institution[]        @relation("InstitutionCustodian")
+  requestsRaised        Request[]            @relation("RequestRaiser")
+
   notifications  Notification[]
   documents      Document[]           @relation("UploadedDocuments")
   verifications  VerificationRecord[] @relation("Reviewer")
@@ -139,11 +160,30 @@ model Location {
   lat      Float?
   lng      Float?
 
+  /// Government identifier. Survives renames and boundary changes, and is the key every
+  /// official scheme uses - which is why it is the anchor even when null for now.
+  lgdCode  String?       @unique
+  /// The narrowing key for village resolution: PIN first, fuzzy name second.
+  pincode  String?
+  /// Alternate and historical spellings, matched alongside `name`. Villages genuinely have
+  /// several; without this the same place gets created twice.
+  aliases  String[]      @default([])
+  /// Denormalised "Ammapur, Dubbak, Medak, Telangana" so a village renders without
+  /// walking four levels of the tree.
+  displayPath String?
+  source      LocationSource @default(MANUAL)
+  /// False until reconciled against LGD. Unverified rows are still usable; the resolver
+  /// just ranks them below canonical ones.
+  isVerified  Boolean        @default(false)
+
   parent   Location?  @relation("LocationTree", fields: [parentId], references: [id])
   children Location[] @relation("LocationTree")
 
-  playerProfiles  PlayerProfile[]
+  athleteProfiles AthleteProfile[]
   sponsorProfiles SponsorProfile[]
+  institutions    Institution[]
+  requests        Request[]
+  coordinators    CoordinatorProfile[] @relation("CoordinatorVillages")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -151,6 +191,8 @@ model Location {
   @@unique([name, level, parentId])
   @@index([parentId])
   @@index([level])
+  @@index([pincode])
+  @@index([level, pincode])
 }
 
 model Sport {
@@ -160,7 +202,7 @@ model Sport {
   iconKey  String?
   isActive Boolean @default(true)
 
-  playerProfiles PlayerProfile[]
+  athleteProfiles AthleteProfile[]
   preferredBy    SponsorProfile[] @relation("PreferredSports")
 
   createdAt DateTime @default(now())
@@ -169,13 +211,13 @@ model Sport {
 
 // ---------- Profiles ----------
 
-model PlayerProfile {
+model AthleteProfile {
   id              String             @id @default(cuid())
   userId          String             @unique
   sportId         String?
   locationId      String?
   dateOfBirth     DateTime?
-  category        PlayerCategory?
+  category        AthleteCategory?
   experienceLevel ExperienceLevel?
   bio             String?
   photoKey        String?
@@ -193,11 +235,11 @@ model PlayerProfile {
 
   achievements        Achievement[]
   events              Event[]
-  requirements        SponsorshipRequirement[]
+  requests            Request[]
   sponsorships        Sponsorship[]
   updates             SponsorshipUpdate[]
   documents           Document[]
-  verificationRecords VerificationRecord[]     @relation("PlayerVerifications")
+  verificationRecords VerificationRecord[]     @relation("AthleteVerifications")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -232,28 +274,84 @@ model SponsorProfile {
   updatedAt DateTime @updatedAt
 }
 
-// ---------- Player content ----------
+/// A village-level validator. The trust anchor of the whole model: verification cannot be
+/// centralised across thousands of villages, and a PET teacher or sarpanch can judge
+/// whether a claimed district medal is real in a way a remote reviewer cannot.
+model CoordinatorProfile {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  /// Shown to sponsors so they can judge the vouching: "PET teacher, ZPHS Ammapur".
+  designation String
+  phone       String?
+  /// This is a delegation of trust, so who granted it is recorded.
+  appointedById String
+  isActive      Boolean @default(true)
+
+  user        User       @relation("CoordinatorUser", fields: [userId], references: [id])
+  appointedBy User       @relation("CoordinatorAppointer", fields: [appointedById], references: [id])
+  /// One person routinely covers several small villages, so this is many-to-many rather
+  /// than a single FK. It is also the boundary of their authority - they cannot act
+  /// outside it, structurally rather than by policy.
+  villages    Location[] @relation("CoordinatorVillages")
+
+  requestsValidated Request[] @relation("RequestValidator")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+enum InstitutionKind {
+  SCHOOL
+  PLAYGROUND
+  CLUB
+  ANGANWADI
+  OTHER
+}
+
+/// A shared beneficiary. v1 could only express "an athlete needs X"; most village needs are
+/// "the school needs mats" or "the ground needs posts".
+model Institution {
+  id          String          @id @default(cuid())
+  villageId   String
+  kind        InstitutionKind
+  name        String
+  description String?
+  custodianId String?
+
+  village   Location @relation(fields: [villageId], references: [id])
+  custodian User?    @relation("InstitutionCustodian", fields: [custodianId], references: [id])
+  requests  Request[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([villageId])
+}
+
+// ---------- Athlete content ----------
 
 model Achievement {
   id              String           @id @default(cuid())
-  playerId        String
+  athleteId        String
   title           String
   level           ExperienceLevel?
   year            Int?
   description     String?
   proofDocumentId String?
 
-  player PlayerProfile @relation(fields: [playerId], references: [id])
+  athlete AthleteProfile @relation(fields: [athleteId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([playerId])
+  @@index([athleteId])
 }
 
 model Event {
   id                    String    @id @default(cuid())
-  playerId              String
+  athleteId              String
   name                  String
   date                  DateTime?
   venue                 String?
@@ -261,36 +359,97 @@ model Event {
   estimatedExpensePaise Int?
   isUpcoming            Boolean   @default(true)
 
-  player PlayerProfile @relation(fields: [playerId], references: [id])
+  athlete AthleteProfile @relation(fields: [athleteId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([playerId, date])
+  @@index([athleteId, date])
 }
 
 // ---------- Sponsorship ----------
 
-model SponsorshipRequirement {
-  id                String            @id @default(cuid())
-  playerId          String
-  title             String
-  description       String?
-  totalAmountPaise  Int
-  raisedAmountPaise Int               @default(0)
-  status            RequirementStatus @default(OPEN)
-  /// Display-only plan: [{ "label": string, "amountPaise": number }]
-  breakdown         Json?
-  deadline          DateTime?
+enum RequestKind {
+  /// Fulfilled in kind: a sponsor buys the item and ships it. khelkhud never touches the
+  /// money on this track - see docs/architecture/v2-village-model.md section 4.
+  EQUIPMENT
+  /// Fulfilled in money, through Razorpay, with receipts. The v1 flow.
+  CASH
+}
 
-  player       PlayerProfile @relation(fields: [playerId], references: [id])
+enum RequestStatus {
+  DRAFT
+  /// Raised by an athlete, waiting on their village coordinator. Never waits on an admin.
+  PENDING_VALIDATION
+  OPEN
+  PARTIALLY_FULFILLED
+  FULFILLED
+  CLOSED
+  REJECTED
+}
+
+/// Generalises v1's SponsorshipRequirement. A need, raised in a village, for either an
+/// athlete or an institution, met with either equipment or cash.
+model Request {
+  id            String        @id @default(cuid())
+  kind          RequestKind
+  /// Denormalised from the beneficiary so the sponsor notification fan-out is one indexed
+  /// query rather than a join through two optional relations.
+  villageId     String
+  /// Exactly one of these is set - enforced in the service layer, since Prisma cannot
+  /// express a check constraint.
+  athleteId     String?
+  institutionId String?
+  raisedById    String
+
+  title       String
+  description String?
+  status      RequestStatus @default(DRAFT)
+  deadline    DateTime?
+
+  /// Set the moment a coordinator raises it: they are the validator, so there is no queue.
+  validatedById String?
+  validatedAt   DateTime?
+  rejectionNote String?
+
+  totalEstimatedPaise Int @default(0)
+  raisedAmountPaise   Int @default(0)
+
+  village     Location            @relation(fields: [villageId], references: [id])
+  athlete     AthleteProfile?     @relation(fields: [athleteId], references: [id])
+  institution Institution?        @relation(fields: [institutionId], references: [id])
+  raisedBy    User                @relation("RequestRaiser", fields: [raisedById], references: [id])
+  validatedBy CoordinatorProfile? @relation("RequestValidator", fields: [validatedById], references: [id])
+
+  items        RequestItem[]
   sponsorships Sponsorship[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([playerId, status])
-  @@index([status])
+  @@index([villageId, status])
+  @@index([athleteId, status])
+  @@index([institutionId, status])
+  @@index([status, kind])
+}
+
+/// One line of a request. For CASH this is a label and an amount. For EQUIPMENT it will
+/// also carry a catalogue reference (added in step 4, deliberately not stubbed here).
+model RequestItem {
+  id             String @id @default(cuid())
+  requestId      String
+  label          String
+  quantity       Int    @default(1)
+  estimatedPaise Int
+  fulfilledQty   Int    @default(0)
+  note           String?
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([requestId])
 }
 
 model Counter {
@@ -302,8 +461,8 @@ model Sponsorship {
   id            String  @id @default(cuid())
   code          String  @unique
   sponsorId     String
-  playerId      String
-  requirementId String?
+  athleteId      String
+  requestId     String?
   amountPaise   Int
   purpose       String
   isAnonymous   Boolean @default(false)
@@ -316,8 +475,8 @@ model Sponsorship {
   razorpayPaymentId String?
 
   sponsor     SponsorProfile          @relation(fields: [sponsorId], references: [id])
-  player      PlayerProfile           @relation(fields: [playerId], references: [id])
-  requirement SponsorshipRequirement? @relation(fields: [requirementId], references: [id])
+  athlete      AthleteProfile           @relation(fields: [athleteId], references: [id])
+  request     Request?                @relation(fields: [requestId], references: [id])
 
   allocations  SponsorshipAllocation[]
   updates      SponsorshipUpdate[]
@@ -328,7 +487,7 @@ model Sponsorship {
   updatedAt DateTime @updatedAt
 
   @@index([sponsorId, status])
-  @@index([playerId, status])
+  @@index([athleteId, status])
   @@index([paymentStatus])
 }
 
@@ -352,20 +511,20 @@ model SponsorshipAllocation {
 
 model SponsorshipUpdate {
   id            String  @id @default(cuid())
-  playerId      String
+  athleteId      String
   /// Null = general profile update visible to everyone; set = linked to one sponsorship
   sponsorshipId String?
   title         String
   body          String
 
-  player      PlayerProfile @relation(fields: [playerId], references: [id])
+  athlete      AthleteProfile @relation(fields: [athleteId], references: [id])
   sponsorship Sponsorship?  @relation(fields: [sponsorshipId], references: [id])
   attachments Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([playerId, createdAt])
+  @@index([athleteId, createdAt])
   @@index([sponsorshipId])
 }
 
@@ -380,13 +539,13 @@ model Document {
   sizeBytes      Int
   uploaderUserId String
 
-  playerProfileId  String?
+  athleteProfileId  String?
   sponsorProfileId String?
   sponsorshipId    String?
   updateId         String?
 
   uploader       User               @relation("UploadedDocuments", fields: [uploaderUserId], references: [id])
-  playerProfile  PlayerProfile?     @relation(fields: [playerProfileId], references: [id])
+  athleteProfile  AthleteProfile?     @relation(fields: [athleteProfileId], references: [id])
   sponsorProfile SponsorProfile?    @relation(fields: [sponsorProfileId], references: [id])
   sponsorship    Sponsorship?       @relation(fields: [sponsorshipId], references: [id])
   update         SponsorshipUpdate? @relation(fields: [updateId], references: [id])
@@ -394,7 +553,7 @@ model Document {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([playerProfileId])
+  @@index([athleteProfileId])
   @@index([sponsorProfileId])
   @@index([sponsorshipId])
   @@index([updateId])
@@ -424,19 +583,19 @@ model Notification {
 
 model VerificationRecord {
   id               String             @id @default(cuid())
-  subjectPlayerId  String?
+  subjectAthleteId  String?
   subjectSponsorId String?
   reviewerUserId   String
   decision         VerificationStatus
   note             String?
 
-  subjectPlayer  PlayerProfile?  @relation("PlayerVerifications", fields: [subjectPlayerId], references: [id])
+  subjectAthlete  AthleteProfile?  @relation("AthleteVerifications", fields: [subjectAthleteId], references: [id])
   subjectSponsor SponsorProfile? @relation("SponsorVerifications", fields: [subjectSponsorId], references: [id])
   reviewer       User            @relation("Reviewer", fields: [reviewerUserId], references: [id])
 
   createdAt DateTime @default(now())
 
-  @@index([subjectPlayerId])
+  @@index([subjectAthleteId])
   @@index([subjectSponsorId])
 }
 

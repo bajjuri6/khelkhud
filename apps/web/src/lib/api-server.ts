@@ -38,8 +38,8 @@ export type Me = {
   email: string;
   name: string;
   avatarUrl: string | null;
-  role: "PLAYER" | "SPONSOR" | "ADMIN" | null;
-  playerProfile: { id: string; verificationStatus: string; sportId: string | null } | null;
+  role: "ATHLETE" | "SPONSOR" | "ADMIN" | null;
+  athleteProfile: { id: string; verificationStatus: string; sportId: string | null } | null;
   sponsorProfile: { id: string; verificationStatus: string; displayName: string | null } | null;
 };
 

@@ -9,9 +9,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiClient } from "@/lib/api";
-import type { PlayerEvent } from "@/lib/types";
+import type { AthleteEvent } from "@/lib/types";
 
-export function EventsTab({ events }: { events: PlayerEvent[] }) {
+export function EventsTab({ events }: { events: AthleteEvent[] }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", date: "", venue: "", expense: "" });
@@ -23,7 +23,7 @@ export function EventsTab({ events }: { events: PlayerEvent[] }) {
     }
     setSaving(true);
     try {
-      await apiClient("/api/players/me/events", {
+      await apiClient("/api/athletes/me/events", {
         method: "POST",
         body: JSON.stringify({
           name: form.name.trim(),
@@ -45,7 +45,7 @@ export function EventsTab({ events }: { events: PlayerEvent[] }) {
 
   async function remove(id: string) {
     try {
-      await apiClient(`/api/players/me/events/${id}`, { method: "DELETE" });
+      await apiClient(`/api/athletes/me/events/${id}`, { method: "DELETE" });
       toast.success("Event removed");
       router.refresh();
     } catch (err) {

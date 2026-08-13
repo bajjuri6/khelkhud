@@ -53,23 +53,31 @@ AZ_SUBSCRIPTION="${AZ_SUBSCRIPTION:-2d975288-b362-47ae-affb-f21b04620dba}"  # Mi
 AZ_LOCATION="${AZ_LOCATION:-centralindia}"
 AZ_RG="${AZ_RG:-khelkhud-rg}"
 
-# VM. Standard_B2pls_v2 is ARM (Ampere): 2 vCPU / 4 GB at ~$16.35/mo, the best
-# RAM-per-rupee in the burstable family and ~$1.60/mo cheaper than the AMD equivalent.
+# VM. Standard_B1ms: 1 vCPU / 2 GB, ~$16.35/mo, from the older Intel BS series.
 #
-# ARM is chosen deliberately because the only machine that builds these images is an
-# Apple Silicon Mac, so linux/arm64 builds are NATIVE and fast. Cross-building amd64
-# under QEMU makes a Next.js build roughly ten times slower.
+# ARM (Standard_B2pls_v2) was the original choice and is both cheaper per GB and native to
+# an Apple Silicon build machine. It is not available: this subscription has a quota of
+# ZERO cores for standardBpsv2Family, standardBsv2Family AND standardBasv2Family in
+# centralindia, and self-service quota increase is refused (QuotaNotAvailableForResource).
+# standardBSFamily is the only family with quota here (limit 10).
 #
-# If you ever need to build on an x86 CI runner, switch BOTH of these together:
-#   VM_SIZE=Standard_B2als_v2   BUILD_PLATFORM=linux/amd64
-# A mismatch produces a container that exits immediately with "exec format error".
-VM_SIZE="${VM_SIZE:-Standard_B2pls_v2}"
+# So: amd64. Measured, not assumed — a from-scratch cross-build of the API image on Apple
+# Silicon takes 80s, because Docker Desktop emulates x86 with Rosetta rather than QEMU.
+# The "10x slower" warning that used to live here was wrong for this machine.
+#
+# B1ms over B2s (2 vCPU / 4 GB, $32.70) to hold the ~$45/mo total that was approved. The
+# stack idles around 350 MB across web + api + caddy with Postgres external, and cloud-init
+# adds 2 GB of swap. If it proves tight, resizing is two minutes and loses nothing:
+#   az vm deallocate -g khelkhud-rg -n khelkhud-app
+#   az vm resize -g khelkhud-rg -n khelkhud-app --size Standard_B2s
+#   az vm start -g khelkhud-rg -n khelkhud-app
+VM_SIZE="${VM_SIZE:-Standard_B1ms}"
 VM_NAME="${VM_NAME:-khelkhud-app}"
 VM_ADMIN="${VM_ADMIN:-azureuser}"
-VM_IMAGE="${VM_IMAGE:-Canonical:ubuntu-24_04-lts:server-arm64:latest}"
+VM_IMAGE="${VM_IMAGE:-Canonical:ubuntu-24_04-lts:server:latest}"
 VM_OS_DISK_GB="${VM_OS_DISK_GB:-32}"
 VM_OS_DISK_SKU="${VM_OS_DISK_SKU:-StandardSSD_LRS}"
-BUILD_PLATFORM="${BUILD_PLATFORM:-linux/arm64}"
+BUILD_PLATFORM="${BUILD_PLATFORM:-linux/amd64}"
 
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/khelkhud-deploy}"
 
@@ -120,8 +128,11 @@ current_version() {
   node -p "require('$(repo_root)/package.json').version"
 }
 
+# `az --subscription X <command>` is NOT valid — the flag is only accepted after the
+# command group, so prefixing it made every call fail with "misspelled or not recognized".
+# The subscription is selected once, in assert_azure_login.
 az_cli() {
-  az --subscription "$AZ_SUBSCRIPTION" "$@"
+  az "$@"
 }
 
 assert_aws_login() {
@@ -137,7 +148,7 @@ aws_cli() {
 assert_azure_login() {
   require_cmd az
   az account show >/dev/null 2>&1 || die "Not logged in. Run: az login"
-  az account show --subscription "$AZ_SUBSCRIPTION" >/dev/null 2>&1 \
+  az account set --subscription "$AZ_SUBSCRIPTION" >/dev/null 2>&1 \
     || die "Subscription $AZ_SUBSCRIPTION not accessible by this account."
 }
 

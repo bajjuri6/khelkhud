@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { formatPaise } from "@khelkhud/shared";
@@ -8,27 +9,105 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { apiServer } from "@/lib/api-server";
+import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld";
+import { JsonLd } from "@/components/seo/json-ld";
+import { SITE_URL, absoluteUrl, isIndexableAthlete } from "@/lib/seo";
 import { documentUrl, profilePhotoUrl } from "@/lib/upload";
 import {
   CATEGORY_LABELS,
   LEVEL_LABELS,
-  type PublicPlayer,
+  type PublicAthlete,
   type SponsorshipUpdateEntry,
 } from "@/lib/types";
+
+
+/**
+ * Per-athlete metadata, and the point where the indexing policy is enforced.
+ *
+ * `isIndexableAthlete` returns false for anyone under 18 — see the long note in lib/seo.ts.
+ * The profile still renders in full for every human visitor; only crawlers are excluded.
+ * The same predicate gates sitemap.ts, so the two can never disagree.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const res = await apiServer<{ data: PublicAthlete }>(`/api/athletes/${id}`);
+  if (!res) return { title: "Athlete not found", robots: { index: false, follow: false } };
+
+  const p = res.data;
+  const indexable = isIndexableAthlete(p);
+  const sport = p.sport?.name ?? "Athlete";
+  const where = p.locationLabel ? ` from ${p.locationLabel}` : "";
+  const need = p.requests?.find((r) => r.status !== "CLOSED");
+
+  const description = need
+    ? `${p.name}, ${sport.toLowerCase()}${where}, needs ${formatPaise(need.totalEstimatedPaise)} for ${need.title.toLowerCase()}. Fund one specific item and follow the receipts on khelkhud.`
+    : `${p.name} is a ${sport.toLowerCase()} athlete${where} on khelkhud. See their achievements, requests and sponsorship history.`;
+
+  return {
+    title: `${p.name} — ${sport}`,
+    description,
+    alternates: { canonical: `/athletes/${id}` },
+    robots: indexable ? undefined : { index: false, follow: false },
+    openGraph: {
+      type: "profile",
+      title: `${p.name} — ${sport} | khelkhud`,
+      description,
+      url: absoluteUrl(`/athletes/${id}`),
+    },
+  };
+}
 
 export default async function AthletePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [res, updatesRes] = await Promise.all([
-    apiServer<{ data: PublicPlayer }>(`/api/players/${id}`),
-    apiServer<{ data: SponsorshipUpdateEntry[] }>(`/api/players/${id}/updates`),
+    apiServer<{ data: PublicAthlete }>(`/api/athletes/${id}`),
+    apiServer<{ data: SponsorshipUpdateEntry[] }>(`/api/athletes/${id}/updates`),
   ]);
   if (!res) notFound();
   const p = res.data;
   const updates = updatesRes?.data ?? [];
   const photo = profilePhotoUrl(p.photoKey) ?? p.avatarUrl;
 
+  const indexable = isIndexableAthlete(p);
+
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-8">
+      {/* Structured data only where indexing is permitted. Emitting a Person entity for a
+          child — name, sport, locality, funding need — is the same disclosure the noindex
+          above is there to prevent, just in a format machines read more eagerly. */}
+      {indexable ? (
+        <>
+          <BreadcrumbJsonLd
+            items={[
+              { name: "khelkhud", path: "/" },
+              { name: "Athletes", path: "/athletes" },
+              { name: p.name, path: `/athletes/${p.id}` },
+            ]}
+          />
+          <JsonLd
+            schema={{
+              "@context": "https://schema.org",
+              "@type": "Person",
+              "@id": `${SITE_URL}/athletes/${p.id}#person`,
+              name: p.name,
+              // No birthDate and no age, even for adults: precise enough to be useful to
+              // nobody except someone building a profile of them.
+              ...(p.sport ? { jobTitle: `${p.sport.name} athlete` } : {}),
+              ...(p.locationLabel
+                ? { homeLocation: { "@type": "Place", name: p.locationLabel } }
+                : {}),
+              ...(p.academyName
+                ? { affiliation: { "@type": "SportsOrganization", name: p.academyName } }
+                : {}),
+              subjectOf: { "@id": `${SITE_URL}/#org` },
+            }}
+          />
+        </>
+      ) : null}
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-4">
           <Avatar className="size-24">
@@ -79,14 +158,14 @@ export default async function AthletePage({ params }: { params: Promise<{ id: st
         </>
       ) : null}
 
-      {p.requirements.length > 0 ? (
+      {p.requests.length > 0 ? (
         <section className="mt-8">
-          <h2 className="text-lg font-semibold">Sponsorship requirements</h2>
+          <h2 className="text-lg font-semibold">Sponsorship requests</h2>
           <div className="mt-3 grid gap-4">
-            {p.requirements.map((r) => {
+            {p.requests.map((r) => {
               const pct =
-                r.totalAmountPaise > 0
-                  ? Math.min(100, Math.round((r.raisedAmountPaise / r.totalAmountPaise) * 100))
+                r.totalEstimatedPaise > 0
+                  ? Math.min(100, Math.round((r.raisedAmountPaise / r.totalEstimatedPaise) * 100))
                   : 0;
               return (
                 <Card key={r.id}>
@@ -100,7 +179,7 @@ export default async function AthletePage({ params }: { params: Promise<{ id: st
                     <div>
                       <div className="mb-1 flex justify-between text-sm">
                         <span className="font-medium">
-                          {formatPaise(r.raisedAmountPaise)} / {formatPaise(r.totalAmountPaise)}{" "}
+                          {formatPaise(r.raisedAmountPaise)} / {formatPaise(r.totalEstimatedPaise)}{" "}
                           sponsored
                         </span>
                         <span className="text-muted-foreground">{pct}%</span>

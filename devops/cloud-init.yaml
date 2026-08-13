@@ -1,4 +1,6 @@
 #cloud-config
+# ASCII ONLY: `az vm create --custom-data` encodes this file as latin-1, so a stray
+# em-dash or curly quote fails the whole VM creation with an opaque codec error.
 # First-boot provisioning for the khelkhud app VM (Ubuntu 24.04 LTS, arm64).
 #
 # Installs Docker from Docker's own apt repository rather than Ubuntu's `docker.io`
@@ -51,7 +53,7 @@ runcmd:
   - usermod -aG docker azureuser
   - systemctl enable --now docker
 
-  # 2 GB of swap. Not a substitute for RAM — insurance for the deploy overlap described
+  # 2 GB of swap. Not a substitute for RAM -- insurance for the deploy overlap described
   # above, and for `prisma migrate deploy` running alongside both app containers.
   - fallocate -l 2G /swapfile
   - chmod 600 /swapfile

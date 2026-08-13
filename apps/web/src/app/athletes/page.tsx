@@ -1,11 +1,25 @@
+import type { Metadata } from "next";
 import { apiServer } from "@/lib/api-server";
+import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld";
+import { absoluteUrl } from "@/lib/seo";
 import { AthleteCard, type AthleteCardData } from "@/components/athlete-card";
 import { FUNDING_BUCKETS } from "@/lib/funding";
 import type { Location, Sport } from "@/lib/types";
 import { DiscoveryFilters } from "./discovery-filters";
 import { DiscoveryPagination } from "./discovery-pagination";
 
-export const metadata = { title: "Find Athletes" };
+export const metadata: Metadata = {
+  title: "Find athletes to sponsor in Telangana",
+  description:
+    "Browse verified athletes across all 33 districts of Telangana by sport, district, age group and how much they still need. Each one has posted a specific, itemised request — kit, coaching, entry fees or travel.",
+  alternates: { canonical: "/athletes" },
+  openGraph: {
+    title: "Find athletes to sponsor in Telangana | khelkhud",
+    description:
+      "Verified athletes across Telangana, each with one specific itemised request you can fund and follow to a receipt.",
+    url: absoluteUrl("/athletes"),
+  },
+};
 
 type SearchParams = {
   q?: string;
@@ -34,21 +48,27 @@ export default async function AthletesPage({
   if (bucket?.min !== undefined) query.set("minPaise", String(bucket.min));
   if (bucket?.max !== undefined) query.set("maxPaise", String(bucket.max));
 
-  const [playersRes, sportsRes, locationsRes] = await Promise.all([
+  const [athletesRes, sportsRes, locationsRes] = await Promise.all([
     apiServer<{ data: AthleteCardData[]; meta: { total: number; page: number; pageSize: number } }>(
-      `/api/players?${query.toString()}`,
+      `/api/athletes?${query.toString()}`,
     ),
     apiServer<{ data: Sport[] }>("/api/meta/sports"),
     apiServer<{ data: Location[] }>("/api/meta/locations"),
   ]);
 
-  const athletes = playersRes?.data ?? [];
-  const meta = playersRes?.meta ?? { total: 0, page: 1, pageSize: 12 };
+  const athletes = athletesRes?.data ?? [];
+  const meta = athletesRes?.meta ?? { total: 0, page: 1, pageSize: 12 };
   const totalPages = Math.max(1, Math.ceil(meta.total / meta.pageSize));
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-14">
-      <p className="eyebrow text-slate">Open requirements</p>
+      <BreadcrumbJsonLd
+        items={[
+          { name: "khelkhud", path: "/" },
+          { name: "Athletes", path: "/athletes" },
+        ]}
+      />
+      <p className="eyebrow text-slate">Open requests</p>
       <h1 className="mt-3 max-w-[20ch] text-h1 font-semibold">
         Every one of these is stuck on one specific thing.
       </h1>

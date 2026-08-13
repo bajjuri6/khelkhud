@@ -9,8 +9,8 @@ import { formatPaise } from "@khelkhud/shared";
 export async function createSponsorship(
   sponsorUserId: string,
   input: {
-    playerId: string;
-    requirementId?: string | null;
+    athleteId: string;
+    requestId?: string | null;
     amountPaise: number;
     purpose: string;
     isAnonymous: boolean;
@@ -19,24 +19,24 @@ export async function createSponsorship(
   const sponsor = await prisma.sponsorProfile.findUnique({ where: { userId: sponsorUserId } });
   if (!sponsor) throw new ApiError(404, "NO_PROFILE", "Sponsor profile not found");
 
-  const player = await prisma.playerProfile.findUnique({
-    where: { id: input.playerId },
+  const athlete = await prisma.athleteProfile.findUnique({
+    where: { id: input.athleteId },
     include: { user: { select: { isActive: true } } },
   });
-  if (!player || !player.user.isActive) throw new ApiError(404, "NOT_FOUND", "Player not found");
-  if (player.userId === sponsorUserId) {
+  if (!athlete || !athlete.user.isActive) throw new ApiError(404, "NOT_FOUND", "Athlete not found");
+  if (athlete.userId === sponsorUserId) {
     throw new ApiError(400, "SELF_SPONSOR", "You cannot sponsor yourself");
   }
 
-  if (input.requirementId) {
-    const requirement = await prisma.sponsorshipRequirement.findUnique({
-      where: { id: input.requirementId },
+  if (input.requestId) {
+    const request = await prisma.request.findUnique({
+      where: { id: input.requestId },
     });
-    if (!requirement || requirement.playerId !== player.id) {
-      throw new ApiError(404, "NOT_FOUND", "Requirement not found for this player");
+    if (!request || request.athleteId !== athlete.id) {
+      throw new ApiError(404, "NOT_FOUND", "Request not found for this athlete");
     }
-    if (requirement.status === "CLOSED") {
-      throw new ApiError(400, "REQUIREMENT_CLOSED", "This requirement is closed");
+    if (request.status === "CLOSED") {
+      throw new ApiError(400, "REQUIREMENT_CLOSED", "This request is closed");
     }
   }
 
@@ -54,8 +54,8 @@ export async function createSponsorship(
       data: {
         code,
         sponsorId: sponsor.id,
-        playerId: player.id,
-        requirementId: input.requirementId ?? null,
+        athleteId: athlete.id,
+        requestId: input.requestId ?? null,
         amountPaise: input.amountPaise,
         purpose: input.purpose,
         isAnonymous: input.isAnonymous,
@@ -66,7 +66,7 @@ export async function createSponsorship(
   const order = await payments.createOrder({
     amountPaise: input.amountPaise,
     receipt: sponsorship.code,
-    notes: { sponsorshipId: sponsorship.id, playerId: player.id },
+    notes: { sponsorshipId: sponsorship.id, athleteId: athlete.id },
   });
 
   await prisma.$transaction([
@@ -120,27 +120,27 @@ export async function markSponsorshipPaid(
         rawPayload,
       },
     });
-    if (sponsorship.requirementId) {
-      const requirement = await tx.sponsorshipRequirement.update({
-        where: { id: sponsorship.requirementId },
+    if (sponsorship.requestId) {
+      const request = await tx.request.update({
+        where: { id: sponsorship.requestId },
         data: { raisedAmountPaise: { increment: sponsorship.amountPaise } },
       });
       const newStatus =
-        requirement.raisedAmountPaise >= requirement.totalAmountPaise
-          ? "FULLY_FUNDED"
-          : "PARTIALLY_FUNDED";
-      if (requirement.status !== "CLOSED" && requirement.status !== newStatus) {
-        await tx.sponsorshipRequirement.update({
-          where: { id: requirement.id },
+        request.raisedAmountPaise >= request.totalEstimatedPaise
+          ? "FULFILLED"
+          : "PARTIALLY_FULFILLED";
+      if (request.status !== "CLOSED" && request.status !== newStatus) {
+        await tx.request.update({
+          where: { id: request.id },
           data: { status: newStatus },
         });
       }
     }
   });
 
-  const [player, sponsor] = await Promise.all([
-    prisma.playerProfile.findUnique({
-      where: { id: sponsorship.playerId },
+  const [athlete, sponsor] = await Promise.all([
+    prisma.athleteProfile.findUnique({
+      where: { id: sponsorship.athleteId },
       include: { user: true },
     }),
     prisma.sponsorProfile.findUnique({
@@ -149,14 +149,14 @@ export async function markSponsorshipPaid(
     }),
   ]);
   const amount = formatPaise(sponsorship.amountPaise);
-  if (player) {
+  if (athlete) {
     const sponsorName = sponsorship.isAnonymous
       ? "An anonymous sponsor"
       : (sponsor?.displayName ?? sponsor?.user.name ?? "A sponsor");
-    await notify(player.userId, "SPONSORSHIP_RECEIVED", {
+    await notify(athlete.userId, "SPONSORSHIP_RECEIVED", {
       title: `You received a sponsorship of ${amount}`,
       body: `${sponsorName} sponsored you for: ${sponsorship.purpose} (${sponsorship.code})`,
-      linkUrl: `/dashboard/player/sponsorships/${sponsorship.id}`,
+      linkUrl: `/dashboard/athlete/sponsorships/${sponsorship.id}`,
     });
   }
   if (sponsor) {

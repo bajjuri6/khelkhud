@@ -6,8 +6,8 @@ import { apiServer } from "@/lib/api-server";
 export const metadata = { title: "Admin" };
 
 type Stats = {
-  totalPlayers: number;
-  verifiedPlayers: number;
+  totalAthletes: number;
+  verifiedAthletes: number;
   totalSponsors: number;
   verifiedSponsors: number;
   totalSponsorships: number;
@@ -26,7 +26,7 @@ export default async function AdminPage() {
 
   const tiles = [
     { label: "Total sponsored", value: formatPaise(s.totalSponsoredPaise) },
-    { label: "Players", value: `${s.totalPlayers} (${s.verifiedPlayers} verified)` },
+    { label: "Athletes", value: `${s.totalAthletes} (${s.verifiedAthletes} verified)` },
     { label: "Sponsors", value: `${s.totalSponsors} (${s.verifiedSponsors} verified)` },
     { label: "Sponsorships", value: String(s.totalSponsorships) },
     { label: "Active", value: String(s.activeSponsorships) },

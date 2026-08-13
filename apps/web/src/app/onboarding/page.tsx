@@ -7,7 +7,7 @@ export const metadata = { title: "Choose your role" };
 export default async function OnboardingPage() {
   const me = await getMe();
   if (!me) redirect("/login");
-  if (me.role === "PLAYER") redirect("/dashboard/player");
+  if (me.role === "ATHLETE") redirect("/dashboard/athlete");
   if (me.role === "SPONSOR") redirect("/dashboard/sponsor");
   if (me.role === "ADMIN") redirect("/admin");
 

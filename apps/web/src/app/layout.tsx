@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { getMe } from "@/lib/api-server";
+import { foundation } from "@khelkhud/theme";
+import { BRAND, INDEXABLE, SITE_URL } from "@/lib/seo";
 
 // Brand fonts (docs/brand-guidelines.md §4). The `variable` names override the fallback
 // stacks that @khelkhud/theme/firstlight.css declares on :root — so the theme package
@@ -21,8 +23,6 @@ const sans = Inter({
   variable: "--kk-font-sans",
   display: "swap",
 });
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://khelkhud.org";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -57,30 +57,68 @@ export const metadata: Metadata = {
   },
   robots: {
     // Staging and preview deploys must not be indexed. Set NEXT_PUBLIC_INDEXABLE=false there.
-    index: process.env.NEXT_PUBLIC_INDEXABLE !== "false",
-    follow: process.env.NEXT_PUBLIC_INDEXABLE !== "false",
+    index: INDEXABLE,
+    follow: INDEXABLE,
   },
 };
 
+// Organization + WebSite, emitted on every page.
+//
+// This graph is what an answer engine reads to decide what khelkhud IS before it reads a
+// word of copy, so it states the scope (Telangana, all 33 districts), the backing
+// organisation, and the sports covered — the three facts most likely to be asked about and
+// most likely to be got wrong from prose alone.
+//
+// @id values are stable so the FAQPage and BreadcrumbList blocks on other pages resolve
+// against the same entity rather than describing a second, unrelated organisation.
 const jsonLd = {
   "@context": "https://schema.org",
   "@graph": [
     {
       "@type": "Organization",
       "@id": `${SITE_URL}/#org`,
-      name: "khelkhud",
+      name: BRAND.name,
+      alternateName: "Khel Khud",
       url: SITE_URL,
-      slogan: "Talent is everywhere. Support isn't.",
-      description:
-        "A sports talent and sponsorship platform closing the gap between an athlete's potential and the resources they need, with transparent, receipt-backed tracking of every rupee.",
-      areaServed: ["Telangana", "India"],
+      slogan: BRAND.tagline,
+      description: BRAND.description,
+      logo: `${SITE_URL}/brand/hero-six.png`,
+      areaServed: {
+        "@type": "AdministrativeArea",
+        name: "Telangana",
+        containedInPlace: { "@type": "Country", name: "India" },
+      },
+      // The backing organisation. `parentOrganization` rather than `funder`: this is who
+      // khelkhud operates under, not merely who paid for something.
+      parentOrganization: {
+        "@type": "Organization",
+        name: foundation.name,
+      },
+      knowsAbout: [
+        "sports sponsorship",
+        "grassroots athletics",
+        "athlete funding",
+        "Telangana sport",
+        "transparent charitable giving",
+      ],
     },
     {
       "@type": "WebSite",
       "@id": `${SITE_URL}/#website`,
       url: SITE_URL,
-      name: "khelkhud",
+      name: BRAND.name,
+      description: BRAND.description,
       publisher: { "@id": `${SITE_URL}/#org` },
+      inLanguage: "en-IN",
+      // Tells search engines the site has its own search, and how to drive it.
+      potentialAction: {
+        "@type": "SearchAction",
+        target: {
+          "@type": "EntryPoint",
+          urlTemplate: `${SITE_URL}/athletes?q={search_term_string}`,
+        },
+        "query-input": "required name=search_term_string",
+      },
     },
   ],
 };

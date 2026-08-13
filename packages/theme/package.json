@@ -5,22 +5,27 @@
   "type": "module",
   "description": "khelkhud's central theme engine. The 'First Light' brand as pure tokens (docs/brand-guidelines.md) plus the generated shadcn/Tailwind CSS contracts for the firstlight (public) and app (dashboard) systems.",
   "exports": {
-    ".": "./src/index.ts",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
     "./firstlight.css": "./firstlight.css",
     "./app.css": "./app.css"
   },
   "files": [
-    "src",
+    "dist",
     "firstlight.css",
     "app.css"
   ],
   "scripts": {
-    "build": "tsx src/generate-css.ts",
-    "typecheck": "tsc --noEmit"
+    "build": "tsc -p tsconfig.json && node dist/generate-css.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
-  }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
 }

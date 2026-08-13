@@ -1,40 +1,37 @@
-import { PrismaClient, LocationLevel } from "@prisma/client";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  PrismaClient,
+  LocationLevel,
+  LocationSource,
+  InstitutionKind,
+  RequestKind,
+  RequestStatus,
+} from "@prisma/client";
 
 const prisma = new PrismaClient();
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Seed for the v2 village model (docs/architecture/v2-village-model.md).
+ *
+ *   pnpm db:seed                  everything, including demo people
+ *   SEED_DEMO=false pnpm db:seed  reference data only — sports, locations, admins
+ *
+ * Reference data is REAL. The 1,069 locations come from India Post's live directory for
+ * the pilot districts, fetched rather than invented, and carry source=INDIA_POST with
+ * isVerified=false because a branch post office is a good proxy for a village but is not
+ * an LGD record. No LGD codes are fabricated; that field stays null until reconciled.
+ *
+ * Demo people are obviously fictional and gated behind SEED_DEMO so production never gets
+ * fabricated athletes on a page whose whole argument is that these are real, verified people.
+ */
 
 const SPORTS = [
-  "Cricket",
-  "Football",
-  "Hockey",
-  "Badminton",
-  "Kabaddi",
-  "Athletics",
-  "Wrestling",
-  "Boxing",
-  "Table Tennis",
-  "Swimming",
-  "Archery",
-  "Weightlifting",
+  "Cricket", "Football", "Hockey", "Badminton", "Kabaddi", "Athletics",
+  "Wrestling", "Boxing", "Table Tennis", "Swimming", "Archery", "Weightlifting",
 ];
-
-// State -> District -> Cities
-const LOCATIONS: Record<string, Record<string, string[]>> = {
-  Telangana: {
-    Hyderabad: ["Hyderabad City", "Secunderabad"],
-    Warangal: ["Warangal City"],
-  },
-  Maharashtra: {
-    Mumbai: ["Mumbai City"],
-    Pune: ["Pune City", "Pimpri-Chinchwad"],
-  },
-  Karnataka: {
-    "Bengaluru Urban": ["Bengaluru"],
-  },
-  "Andhra Pradesh": {
-    Guntur: ["Guntur City"],
-    Krishna: ["Vijayawada"],
-  },
-};
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
   .split(",")
@@ -42,15 +39,114 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
   .filter(Boolean);
 
 function slugify(s: string): string {
-  return s.toLowerCase().replace(/\s+/g, "-");
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
-// Compound unique (name, level, parentId) can't be used in upsert when parentId
-// is null (Postgres treats NULLs as distinct), so find-or-create instead.
-async function findOrCreateLocation(name: string, level: LocationLevel, parentId: string | null) {
+// Compound unique (name, level, parentId) can't drive an upsert when parentId is null —
+// Postgres treats NULLs as distinct — so find-or-create.
+async function findOrCreateLocation(
+  name: string,
+  level: LocationLevel,
+  parentId: string | null,
+  extra: {
+    pincode?: string;
+    displayPath?: string;
+    source?: LocationSource;
+    isVerified?: boolean;
+  } = {},
+) {
   const existing = await prisma.location.findFirst({ where: { name, level, parentId } });
   if (existing) return existing;
-  return prisma.location.create({ data: { name, level, parentId } });
+  return prisma.location.create({ data: { name, level, parentId, ...extra } });
+}
+
+type PostOffice = {
+  pincode: string;
+  name: string;
+  branchType: string;
+  mandal: string;
+  district: string;
+  state: string;
+};
+
+/**
+ * Build the STATE -> DISTRICT -> MANDAL -> VILLAGE tree from India Post data.
+ *
+ * A BRANCH post office in rural India is sited in a village and named after it. A SUB or
+ * HEAD office is a town. Both are recorded, distinguished by level, because a donor
+ * searching "Sangareddy" should find the town too.
+ *
+ * District names are stored EXACTLY as India Post returns them, which is pre-2016: it
+ * still says "Medak" for areas now in Sangareddy and Siddipet. Rewriting government data
+ * to match a later reorganisation would be a guess; the current district gets attached as
+ * an alias during LGD reconciliation instead.
+ */
+async function seedPilotLocations(): Promise<number> {
+  const raw = readFileSync(path.join(here, "data/pilot-locations.json"), "utf8");
+  const offices = JSON.parse(raw) as PostOffice[];
+
+  const stateIds = new Map<string, string>();
+  const districtIds = new Map<string, string>();
+  const mandalIds = new Map<string, string>();
+  let villages = 0;
+
+  for (const o of offices) {
+    if (!o.state || !o.district || !o.name) continue;
+
+    let stateId = stateIds.get(o.state);
+    if (!stateId) {
+      stateId = (await findOrCreateLocation(o.state, LocationLevel.STATE, null, {
+        source: LocationSource.INDIA_POST,
+        displayPath: o.state,
+      })).id;
+      stateIds.set(o.state, stateId);
+    }
+
+    const dKey = `${o.state}/${o.district}`;
+    let districtId = districtIds.get(dKey);
+    if (!districtId) {
+      districtId = (await findOrCreateLocation(o.district, LocationLevel.DISTRICT, stateId, {
+        source: LocationSource.INDIA_POST,
+        displayPath: `${o.district}, ${o.state}`,
+      })).id;
+      districtIds.set(dKey, districtId);
+    }
+
+    // India Post returns the literal string "NA" for Block on some records. Taking it at
+    // face value creates a mandal named "NA" and a displayPath reading "Venkatapur, NA,
+    // Medak" — fall back to the district, which is at least true.
+    const rawMandal = (o.mandal || "").trim();
+    const mandalName = !rawMandal || rawMandal.toUpperCase() === "NA" ? o.district : rawMandal;
+    const mKey = `${dKey}/${mandalName}`;
+    let mandalId = mandalIds.get(mKey);
+    if (!mandalId) {
+      mandalId = (await findOrCreateLocation(mandalName, LocationLevel.MANDAL, districtId, {
+        source: LocationSource.INDIA_POST,
+        displayPath: `${mandalName}, ${o.district}, ${o.state}`,
+      })).id;
+      mandalIds.set(mKey, mandalId);
+    }
+
+    const isVillage = o.branchType.toLowerCase().startsWith("branch");
+    await findOrCreateLocation(
+      o.name,
+      isVillage ? LocationLevel.VILLAGE : LocationLevel.CITY,
+      mandalId,
+      {
+        pincode: o.pincode,
+        displayPath: `${o.name}, ${mandalName}, ${o.district}, ${o.state}`,
+        source: LocationSource.INDIA_POST,
+        isVerified: false,
+      },
+    );
+    if (isVillage) villages++;
+  }
+
+  console.log(
+    `Seeded ${stateIds.size} state(s), ${districtIds.size} districts, ` +
+      `${mandalIds.size} mandals, ${villages} villages (source: India Post)`,
+  );
+  return villages;
 }
 
 async function main() {
@@ -63,20 +159,7 @@ async function main() {
   }
   console.log(`Seeded ${SPORTS.length} sports`);
 
-  let locationCount = 0;
-  for (const [stateName, districts] of Object.entries(LOCATIONS)) {
-    const state = await findOrCreateLocation(stateName, LocationLevel.STATE, null);
-    locationCount++;
-    for (const [districtName, cities] of Object.entries(districts)) {
-      const district = await findOrCreateLocation(districtName, LocationLevel.DISTRICT, state.id);
-      locationCount++;
-      for (const cityName of cities) {
-        await findOrCreateLocation(cityName, LocationLevel.CITY, district.id);
-        locationCount++;
-      }
-    }
-  }
-  console.log(`Seeded ${locationCount} locations`);
+  await seedPilotLocations();
 
   for (const email of ADMIN_EMAILS) {
     await prisma.user.upsert({
@@ -87,360 +170,292 @@ async function main() {
     console.log(`Seeded admin: ${email}`);
   }
 
+  if (process.env.SEED_DEMO === "false") {
+    console.log("SEED_DEMO=false - skipping demo coordinators, athletes and requests");
+    return;
+  }
   await seedDemoData();
 }
 
-// ---------- Demo data (players, sponsors, sponsorships) ----------
+// ---------- Demo data ----------
 
-const DEMO_PLAYERS = [
+const DEMO_COORDINATORS = [
   {
-    email: "demo.player1@khelkhud.dev",
-    name: "Rahul Kumar",
-    sport: "Cricket",
-    city: "Hyderabad City",
-    category: "UNDER_19",
-    level: "DISTRICT",
-    dob: "2008-03-12",
-    verification: "VERIFIED",
-    bio: "Right-handed batsman from Hyderabad. Playing since age 9, dreaming of representing Telangana at the U-19 state level.",
-    achievements: [
-      { title: "District U-19 Champion", level: "DISTRICT", year: 2025 },
-      { title: "Best Batsman — Inter-School Cup", level: "DISTRICT", year: 2024 },
-    ],
-    events: [{ name: "State U-19 Trials", inDays: 45, venue: "Hyderabad", expense: 800000 }],
-    requirement: {
-      title: "Season kit and tournament travel",
-      description: "Equipment and travel for the upcoming state trials season.",
-      breakdown: [
-        { label: "Cricket bat", amountPaise: 400000 },
-        { label: "Kit and pads", amountPaise: 500000 },
-        { label: "Travel", amountPaise: 600000 },
-      ],
-    },
+    email: "coord.dubbak@khelkhud.dev",
+    name: "Srinivas Rao",
+    designation: "PET teacher, ZPHS Dubbak",
+    village: "Chikode",
   },
   {
-    email: "demo.player2@khelkhud.dev",
-    name: "Ananya Reddy",
-    sport: "Badminton",
-    city: "Secunderabad",
-    category: "UNDER_15",
-    level: "STATE",
-    dob: "2011-07-25",
-    verification: "VERIFIED",
-    bio: "State-ranked shuttler training 5 hours a day. Aiming for the national junior circuit.",
-    achievements: [
-      { title: "State U-15 Runner-up", level: "STATE", year: 2025 },
-      { title: "District Champion", level: "DISTRICT", year: 2024 },
-    ],
-    events: [{ name: "Junior National Qualifiers", inDays: 60, venue: "Bengaluru", expense: 1200000 }],
-    requirement: {
-      title: "Racquets and coaching fees",
-      description: "Two tournament-grade racquets and three months of academy coaching.",
-      breakdown: [
-        { label: "Racquets (x2)", amountPaise: 900000 },
-        { label: "Coaching fees", amountPaise: 1500000 },
-      ],
-    },
+    email: "coord.yellareddy@khelkhud.dev",
+    name: "Lakshmi Devi",
+    designation: "Sarpanch, Yellareddy",
+    village: "Rampur",
   },
+];
+
+const DEMO_ATHLETES = [
   {
-    email: "demo.player3@khelkhud.dev",
-    name: "Vikram Singh",
+    email: "athlete.sai@khelkhud.dev",
+    name: "Sai Priya",
     sport: "Athletics",
-    city: "Pune City",
-    category: "SENIOR",
-    level: "STATE",
-    dob: "2004-11-02",
-    verification: "VERIFIED",
-    bio: "400m sprinter chasing the national qualifying mark. Trains at Balewadi stadium.",
-    achievements: [{ title: "State Meet Gold — 400m", level: "STATE", year: 2025 }],
-    events: [{ name: "Federation Cup", inDays: 90, venue: "Delhi", expense: 1500000 }],
-    requirement: {
-      title: "Spikes, physio and travel",
-      breakdown: [
-        { label: "Running spikes", amountPaise: 800000 },
-        { label: "Physiotherapy", amountPaise: 700000 },
-        { label: "Travel to nationals", amountPaise: 1000000 },
-      ],
-    },
+    category: "UNDER_19" as const,
+    level: "STATE" as const,
+    dob: "2008-06-14",
+    verification: "VERIFIED" as const,
+    bio: "Middle-distance runner. Trains on the school ground at 5am before class.",
+    achievements: [{ title: "District 800m gold", level: "DISTRICT" as const, year: 2025 }],
   },
   {
-    email: "demo.player4@khelkhud.dev",
-    name: "Sneha Patil",
-    sport: "Swimming",
-    city: "Mumbai City",
-    category: "UNDER_19",
-    level: "NATIONAL",
-    dob: "2009-01-18",
-    verification: "VERIFIED",
-    bio: "National-level 200m freestyle swimmer balancing school and 6 training sessions a week.",
-    achievements: [{ title: "National U-17 Finalist", level: "NATIONAL", year: 2025 }],
-    events: [],
-    requirement: {
-      title: "Pool fees and nutrition",
-      breakdown: [
-        { label: "Pool membership (6 months)", amountPaise: 1800000 },
-        { label: "Nutrition plan", amountPaise: 900000 },
-      ],
-    },
-  },
-  {
-    email: "demo.player5@khelkhud.dev",
-    name: "Arjun Naik",
+    email: "athlete.mahesh@khelkhud.dev",
+    name: "Mahesh Goud",
     sport: "Kabaddi",
-    city: "Warangal City",
-    category: "UNDER_19",
-    level: "DISTRICT",
-    dob: "2007-09-30",
-    verification: "PENDING",
-    bio: "Raider from Warangal, captain of the school team.",
-    achievements: [{ title: "Inter-School Champion", level: "DISTRICT", year: 2025 }],
-    events: [],
-    requirement: {
-      title: "Team kit and mat fees",
-      breakdown: [
-        { label: "Kit", amountPaise: 300000 },
-        { label: "Mat practice fees", amountPaise: 200000 },
-      ],
-    },
+    category: "SENIOR" as const,
+    level: "DISTRICT" as const,
+    dob: "2004-02-09",
+    verification: "VERIFIED" as const,
+    bio: "Raider for the mandal team. Working towards state selection trials.",
+    achievements: [{ title: "Mandal championship — best raider", level: "DISTRICT" as const, year: 2025 }],
   },
   {
-    email: "demo.player6@khelkhud.dev",
-    name: "Kiran Rao",
-    sport: "Football",
-    city: "Bengaluru",
-    category: "UNDER_15",
-    level: "BEGINNER",
-    dob: "2012-05-05",
-    verification: "REJECTED",
-    bio: "Young striker looking for academy support.",
+    email: "athlete.anitha@khelkhud.dev",
+    name: "Anitha Bai",
+    sport: "Athletics",
+    category: "UNDER_15" as const,
+    level: "DISTRICT" as const,
+    dob: "2012-11-02",
+    verification: "PENDING" as const,
+    bio: "Long jump. Started competing last season after a school sports day win.",
     achievements: [],
-    events: [],
-    requirement: {
-      title: "Boots and academy trial fees",
-      breakdown: [
-        { label: "Football boots", amountPaise: 250000 },
-        { label: "Trial fees", amountPaise: 150000 },
-      ],
-    },
   },
-] as const;
-
-const DEMO_SPONSORS = [
-  {
-    email: "demo.sponsor1@khelkhud.dev",
-    name: "ABC Foundation",
-    displayName: "ABC Foundation",
-    type: "ORGANIZATION",
-    orgName: "ABC Charitable Foundation",
-    city: "Hyderabad City",
-    verification: "VERIFIED",
-    anonymous: false,
-  },
-  {
-    email: "demo.sponsor2@khelkhud.dev",
-    name: "Ravi Kumar",
-    displayName: "Ravi Kumar",
-    type: "INDIVIDUAL",
-    orgName: null,
-    city: "Pune City",
-    verification: "VERIFIED",
-    anonymous: false,
-  },
-  {
-    email: "demo.sponsor3@khelkhud.dev",
-    name: "SportsCorp",
-    displayName: "SportsCorp India",
-    type: "COMPANY",
-    orgName: "SportsCorp India Pvt Ltd",
-    city: "Mumbai City",
-    verification: "PENDING",
-    anonymous: true,
-  },
-] as const;
-
-async function nextCode(): Promise<string> {
-  const year = new Date().getFullYear();
-  const counterId = `SPN-${year}`;
-  const counter = await prisma.counter.upsert({
-    where: { id: counterId },
-    create: { id: counterId, value: 1 },
-    update: { value: { increment: 1 } },
-  });
-  return `${counterId}-${String(counter.value).padStart(5, "0")}`;
-}
+];
 
 async function seedDemoData() {
-  const cities = await prisma.location.findMany({ where: { level: "CITY" } });
-  const cityByName = new Map(cities.map((c) => [c.name, c]));
-  const sports = await prisma.sport.findMany();
-  const sportByName = new Map(sports.map((s) => [s.name, s]));
+  const villages = await prisma.location.findMany({
+    where: { level: LocationLevel.VILLAGE },
+    take: 40,
+    orderBy: { name: "asc" },
+  });
+  if (villages.length === 0) {
+    console.log("No villages seeded — skipping demo data");
+    return;
+  }
+  const pick = (i: number) => villages[i % villages.length]!;
 
-  const playerProfiles: Record<string, string> = {};
-  for (const p of DEMO_PLAYERS) {
+  const admin = await prisma.user.findFirst({ where: { role: "ADMIN" } });
+  if (!admin) {
+    console.log("No admin user — skipping demo data (coordinators need an appointer)");
+    return;
+  }
+
+  // ---- coordinators -----------------------------------------------------------
+  const coordinators = [];
+  for (const [i, c] of DEMO_COORDINATORS.entries()) {
+    const village = pick(i * 7);
     const user = await prisma.user.upsert({
-      where: { email: p.email },
-      update: {},
-      create: { email: p.email, name: p.name, role: "PLAYER" },
+      where: { email: c.email },
+      update: { role: "COORDINATOR" },
+      create: { email: c.email, name: c.name, role: "COORDINATOR" },
     });
-    const existing = await prisma.playerProfile.findUnique({ where: { userId: user.id } });
-    if (existing) {
-      playerProfiles[p.email] = existing.id;
-      continue;
-    }
-    const profile = await prisma.playerProfile.create({
-      data: {
-        userId: user.id,
-        sportId: sportByName.get(p.sport)?.id,
-        locationId: cityByName.get(p.city)?.id,
-        dateOfBirth: new Date(p.dob),
-        category: p.category,
-        experienceLevel: p.level,
-        bio: p.bio,
-        verificationStatus: p.verification,
-        verifiedAt: p.verification === "VERIFIED" ? new Date() : null,
-        achievements: { create: [...p.achievements] },
-        events: {
-          create: p.events.map((e) => ({
-            name: e.name,
-            date: new Date(Date.now() + e.inDays * 24 * 3600 * 1000),
-            venue: e.venue,
-            estimatedExpensePaise: e.expense,
-            isUpcoming: true,
-          })),
+    const existing = await prisma.coordinatorProfile.findUnique({ where: { userId: user.id } });
+    const profile =
+      existing ??
+      (await prisma.coordinatorProfile.create({
+        data: {
+          userId: user.id,
+          designation: c.designation,
+          appointedById: admin.id,
+          villages: { connect: [{ id: village.id }] },
         },
-      },
-    });
-    const total = p.requirement.breakdown.reduce((s, b) => s + b.amountPaise, 0);
-    await prisma.sponsorshipRequirement.create({
-      data: {
-        playerId: profile.id,
-        title: p.requirement.title,
-        description: "description" in p.requirement ? p.requirement.description : null,
-        totalAmountPaise: total,
-        breakdown: [...p.requirement.breakdown],
-      },
-    });
-    playerProfiles[p.email] = profile.id;
+      }));
+    coordinators.push({ profile, user, village });
   }
-  console.log(`Seeded ${DEMO_PLAYERS.length} demo players`);
+  console.log(`Seeded ${coordinators.length} village coordinators`);
 
-  const sponsorProfiles: Record<string, string> = {};
-  for (const s of DEMO_SPONSORS) {
+  // ---- institutions -----------------------------------------------------------
+  const institutions = [];
+  for (const [i, c] of coordinators.entries()) {
+    const inst = await prisma.institution.create({
+      data: {
+        villageId: c.village.id,
+        kind: i === 0 ? InstitutionKind.SCHOOL : InstitutionKind.PLAYGROUND,
+        name: i === 0 ? `ZPHS ${c.village.name}` : `${c.village.name} community ground`,
+        description:
+          i === 0
+            ? "Government high school. One shared set of equipment for 340 students."
+            : "Village ground used by three teams and the school.",
+        custodianId: c.user.id,
+      },
+    });
+    institutions.push(inst);
+  }
+  console.log(`Seeded ${institutions.length} institutions`);
+
+  // ---- athletes ---------------------------------------------------------------
+  const sports = await prisma.sport.findMany();
+  const sportId = (name: string) => sports.find((s) => s.name === name)?.id ?? null;
+
+  const athletes = [];
+  for (const [i, a] of DEMO_ATHLETES.entries()) {
+    const village = coordinators[i % coordinators.length]!.village;
     const user = await prisma.user.upsert({
-      where: { email: s.email },
-      update: {},
-      create: { email: s.email, name: s.name, role: "SPONSOR" },
+      where: { email: a.email },
+      update: { role: "ATHLETE" },
+      create: { email: a.email, name: a.name, role: "ATHLETE" },
     });
-    const existing = await prisma.sponsorProfile.findUnique({ where: { userId: user.id } });
-    if (existing) {
-      sponsorProfiles[s.email] = existing.id;
-      continue;
-    }
-    const profile = await prisma.sponsorProfile.create({
-      data: {
-        userId: user.id,
-        sponsorType: s.type,
-        displayName: s.displayName,
-        orgName: s.orgName,
-        locationId: cityByName.get(s.city)?.id,
-        isAnonymousByDefault: s.anonymous,
-        verificationStatus: s.verification,
-        verifiedAt: s.verification === "VERIFIED" ? new Date() : null,
-      },
-    });
-    sponsorProfiles[s.email] = profile.id;
+    const existing = await prisma.athleteProfile.findUnique({ where: { userId: user.id } });
+    const profile =
+      existing ??
+      (await prisma.athleteProfile.create({
+        data: {
+          userId: user.id,
+          sportId: sportId(a.sport),
+          locationId: village.id,
+          dateOfBirth: new Date(a.dob),
+          category: a.category,
+          experienceLevel: a.level,
+          bio: a.bio,
+          verificationStatus: a.verification,
+          verifiedAt: a.verification === "VERIFIED" ? new Date() : null,
+          achievements: { create: a.achievements },
+        },
+      }));
+    athletes.push({ profile, village });
   }
-  console.log(`Seeded ${DEMO_SPONSORS.length} demo sponsors`);
+  console.log(`Seeded ${athletes.length} athletes`);
 
-  // Two paid sponsorships with tracking state, only on first run.
-  const sponsor1 = sponsorProfiles["demo.sponsor1@khelkhud.dev"]!;
-  const alreadySeeded = await prisma.sponsorship.findFirst({ where: { sponsorId: sponsor1 } });
-  if (alreadySeeded) return;
+  // ---- requests ---------------------------------------------------------------
+  // A coordinator raised each of these, so each is validated on arrival — the whole point
+  // of the role. An athlete-raised request would sit at PENDING_VALIDATION instead.
+  const validator = coordinators[0]!;
 
-  const player1 = playerProfiles["demo.player1@khelkhud.dev"]!;
-  const req1 = await prisma.sponsorshipRequirement.findFirstOrThrow({
-    where: { playerId: player1 },
+  const makeRequest = async (args: {
+    kind: RequestKind;
+    title: string;
+    description: string;
+    villageId: string;
+    athleteId?: string;
+    institutionId?: string;
+    items: { label: string; quantity: number; estimatedPaise: number }[];
+  }) => {
+    const total = args.items.reduce((s, it) => s + it.estimatedPaise * it.quantity, 0);
+    return prisma.request.create({
+      data: {
+        kind: args.kind,
+        title: args.title,
+        description: args.description,
+        villageId: args.villageId,
+        athleteId: args.athleteId,
+        institutionId: args.institutionId,
+        raisedById: validator.user.id,
+        validatedById: validator.profile.id,
+        validatedAt: new Date(),
+        status: RequestStatus.OPEN,
+        totalEstimatedPaise: total,
+        items: { create: args.items },
+      },
+    });
+  };
+
+  await makeRequest({
+    kind: RequestKind.EQUIPMENT,
+    title: "Kabaddi mats for the school ground",
+    description:
+      "340 students share one worn mat. Practice is on bare earth, and two players were injured last season.",
+    villageId: institutions[0]!.villageId,
+    institutionId: institutions[0]!.id,
+    items: [
+      { label: "Kabaddi practice mat (10m x 8m)", quantity: 2, estimatedPaise: 2800000 },
+      { label: "Field marking kit", quantity: 1, estimatedPaise: 120000 },
+    ],
   });
-  const s1 = await prisma.sponsorship.create({
+
+  await makeRequest({
+    kind: RequestKind.EQUIPMENT,
+    title: "Running spikes and training kit",
+    description: "Currently training barefoot on packed earth.",
+    villageId: athletes[0]!.village.id,
+    athleteId: athletes[0]!.profile.id,
+    items: [
+      { label: "Competition running spikes (size 6)", quantity: 1, estimatedPaise: 320000 },
+      { label: "Training shoes", quantity: 1, estimatedPaise: 180000 },
+    ],
+  });
+
+  const cashRequest = await makeRequest({
+    kind: RequestKind.CASH,
+    title: "State trials — travel and entry",
+    description: "Selection trials in Hyderabad, three days including entry fee and stay.",
+    villageId: athletes[1]!.village.id,
+    athleteId: athletes[1]!.profile.id,
+    items: [
+      { label: "Bus travel, return", quantity: 1, estimatedPaise: 90000 },
+      { label: "Entry fee", quantity: 1, estimatedPaise: 60000 },
+      { label: "Three nights stay and meals", quantity: 1, estimatedPaise: 210000 },
+    ],
+  });
+
+  // One athlete-raised request, left awaiting its coordinator, so the queue is not empty.
+  await prisma.request.create({
     data: {
-      code: await nextCode(),
-      sponsorId: sponsor1,
-      playerId: player1,
-      requirementId: req1.id,
-      amountPaise: 1000000,
-      purpose: "Cricket Equipment",
-      paymentStatus: "PAID",
-      utilizationStatus: "IN_PROGRESS",
-      razorpayOrderId: "order_seed_demo1",
-      razorpayPaymentId: "pay_seed_demo1",
-      allocations: {
-        create: [
-          { label: "Cricket bat", amountPaise: 400000, status: "COMPLETED", completedAt: new Date() },
-          { label: "Cricket shoes", amountPaise: 200000, status: "PURCHASED" },
-          { label: "Travel", amountPaise: 200000, status: "PLANNED" },
-        ],
-      },
-      transactions: {
-        create: [
-          { amountPaise: 1000000, provider: "SEED", providerOrderId: "order_seed_demo1", status: "CREATED" },
-          {
-            amountPaise: 1000000,
-            provider: "SEED",
-            providerOrderId: "order_seed_demo1",
-            providerPaymentId: "pay_seed_demo1",
-            status: "PAID",
-          },
-        ],
-      },
+      kind: RequestKind.EQUIPMENT,
+      title: "Long jump take-off board",
+      description: "The pit has no board; the run-up is measured with chalk each time.",
+      villageId: athletes[2]!.village.id,
+      athleteId: athletes[2]!.profile.id,
+      raisedById: (await prisma.athleteProfile.findUniqueOrThrow({
+        where: { id: athletes[2]!.profile.id },
+        select: { userId: true },
+      })).userId,
+      status: RequestStatus.PENDING_VALIDATION,
+      totalEstimatedPaise: 450000,
+      items: { create: [{ label: "Take-off board and sand rake", quantity: 1, estimatedPaise: 450000 }] },
     },
   });
-  await prisma.sponsorshipRequirement.update({
-    where: { id: req1.id },
-    data: { raisedAmountPaise: { increment: 1000000 }, status: "PARTIALLY_FUNDED" },
-  });
-  await prisma.sponsorshipUpdate.create({
-    data: {
-      playerId: player1,
-      sponsorshipId: s1.id,
-      title: "Purchased cricket bat and shoes",
-      body: "Bought a new English willow bat and spikes using the sponsorship support. Thank you ABC Foundation!",
-    },
-  });
+  console.log("Seeded 4 requests (3 coordinator-validated, 1 pending validation)");
 
-  const sponsor2 = sponsorProfiles["demo.sponsor2@khelkhud.dev"]!;
-  const player3 = playerProfiles["demo.player3@khelkhud.dev"]!;
-  const req3 = await prisma.sponsorshipRequirement.findFirstOrThrow({
-    where: { playerId: player3 },
+  // ---- a sponsor and one funded cash request ----------------------------------
+  const sponsorUser = await prisma.user.upsert({
+    where: { email: "sponsor.demo@khelkhud.dev" },
+    update: { role: "SPONSOR" },
+    create: { email: "sponsor.demo@khelkhud.dev", name: "Ramesh Varma", role: "SPONSOR" },
   });
+  const sponsor =
+    (await prisma.sponsorProfile.findUnique({ where: { userId: sponsorUser.id } })) ??
+    (await prisma.sponsorProfile.create({
+      data: {
+        userId: sponsorUser.id,
+        sponsorType: "INDIVIDUAL",
+        displayName: "Ramesh Varma",
+        bio: "Grew up in the village, works in Hyderabad now.",
+        verificationStatus: "VERIFIED",
+        verifiedAt: new Date(),
+      },
+    }));
+
   await prisma.sponsorship.create({
     data: {
-      code: await nextCode(),
-      sponsorId: sponsor2,
-      playerId: player3,
-      requirementId: req3.id,
-      amountPaise: 500000,
-      purpose: "Running spikes",
+      code: "KK-2026-0001",
+      sponsorId: sponsor.id,
+      athleteId: athletes[1]!.profile.id,
+      requestId: cashRequest.id,
+      amountPaise: 150000,
+      purpose: "Travel and entry fee for state trials",
       paymentStatus: "PAID",
-      razorpayOrderId: "order_seed_demo2",
-      razorpayPaymentId: "pay_seed_demo2",
-      transactions: {
+      utilizationStatus: "IN_PROGRESS",
+      allocations: {
         create: [
-          {
-            amountPaise: 500000,
-            provider: "SEED",
-            providerOrderId: "order_seed_demo2",
-            providerPaymentId: "pay_seed_demo2",
-            status: "PAID",
-          },
+          { label: "Bus travel, return", amountPaise: 90000, status: "COMPLETED" },
+          { label: "Entry fee", amountPaise: 60000, status: "PURCHASED" },
         ],
       },
     },
   });
-  await prisma.sponsorshipRequirement.update({
-    where: { id: req3.id },
-    data: { raisedAmountPaise: { increment: 500000 }, status: "PARTIALLY_FUNDED" },
+  await prisma.request.update({
+    where: { id: cashRequest.id },
+    data: { raisedAmountPaise: 150000, status: RequestStatus.PARTIALLY_FULFILLED },
   });
-  console.log("Seeded 2 demo sponsorships with tracking state");
+  console.log("Seeded 1 sponsor and 1 part-funded cash request");
 }
 
 main()

@@ -19,7 +19,7 @@ export default async function VerificationsPage({
         Review profiles and their documents, then approve, reject, or request more information.
       </p>
       <VerificationQueue
-        data={res?.data ?? { players: [], sponsors: [] }}
+        data={res?.data ?? { athletes: [], sponsors: [] }}
         currentStatus={status ?? ""}
       />
     </div>

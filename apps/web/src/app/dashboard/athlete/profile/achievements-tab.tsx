@@ -31,7 +31,7 @@ export function AchievementsTab({ achievements }: { achievements: Achievement[] 
     }
     setSaving(true);
     try {
-      await apiClient("/api/players/me/achievements", {
+      await apiClient("/api/athletes/me/achievements", {
         method: "POST",
         body: JSON.stringify({
           title: form.title.trim(),
@@ -52,7 +52,7 @@ export function AchievementsTab({ achievements }: { achievements: Achievement[] 
 
   async function remove(id: string) {
     try {
-      await apiClient(`/api/players/me/achievements/${id}`, { method: "DELETE" });
+      await apiClient(`/api/athletes/me/achievements/${id}`, { method: "DELETE" });
       toast.success("Achievement removed");
       router.refresh();
     } catch (err) {

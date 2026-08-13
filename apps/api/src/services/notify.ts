@@ -7,7 +7,7 @@ import { notificationEmail } from "../providers/mail/templates.js";
 const EMAIL_WORTHY: ReadonlySet<NotificationType> = new Set([
   "SPONSORSHIP_RECEIVED",
   "PAYMENT_CONFIRMED",
-  "PLAYER_UPDATE",
+  "ATHLETE_UPDATE",
   "VERIFICATION_RESULT",
   "INFO_REQUESTED",
 ]);

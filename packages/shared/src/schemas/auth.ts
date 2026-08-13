@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const roleSelectSchema = z.object({
-  role: z.enum(["PLAYER", "SPONSOR"]),
+  role: z.enum(["ATHLETE", "SPONSOR"]),
 });
 
 export type RoleSelectInput = z.infer<typeof roleSelectSchema>;
@@ -18,7 +18,7 @@ export const emailSchema = z
   .max(254, "Email is too long")
   .email("Enter a valid email address");
 
-// 10 chars minimum, no composition rules. Length beats character-class requirements —
+// 10 chars minimum, no composition rules. Length beats character-class requests —
 // those mostly produce `Password1!` — and a minimum this low would be wrong without the
 // login throttling in middleware/rate-limit.ts, which is what actually stops guessing.
 export const passwordSchema = z

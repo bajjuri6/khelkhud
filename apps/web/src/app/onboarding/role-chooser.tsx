@@ -9,11 +9,11 @@ import { apiClient } from "@/lib/api";
 
 const ROLES = [
   {
-    role: "PLAYER" as const,
+    role: "ATHLETE" as const,
     title: "I'm an Athlete",
     description:
       "Create your sports profile, list what you need, and receive transparent sponsorships.",
-    cta: "Create player profile",
+    cta: "Create athlete profile",
   },
   {
     role: "SPONSOR" as const,
@@ -26,9 +26,9 @@ const ROLES = [
 
 export function RoleChooser() {
   const router = useRouter();
-  const [submitting, setSubmitting] = useState<"PLAYER" | "SPONSOR" | null>(null);
+  const [submitting, setSubmitting] = useState<"ATHLETE" | "SPONSOR" | null>(null);
 
-  async function choose(role: "PLAYER" | "SPONSOR") {
+  async function choose(role: "ATHLETE" | "SPONSOR") {
     setSubmitting(role);
     try {
       const res = await apiClient<{ data: { redirect: string } }>("/api/auth/role", {

@@ -22,7 +22,7 @@ type Row = {
   utilizationStatus: string;
   createdAt: string;
   isAnonymous: boolean;
-  player: { user: { name: string } };
+  athlete: { user: { name: string } };
   sponsor: { displayName: string | null; user: { name: string } };
 };
 
@@ -42,7 +42,7 @@ export default async function AdminSponsorshipsPage() {
             <TableRow>
               <TableHead>Code</TableHead>
               <TableHead>Sponsor</TableHead>
-              <TableHead>Player</TableHead>
+              <TableHead>Athlete</TableHead>
               <TableHead>Purpose</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>Payment</TableHead>
@@ -58,7 +58,7 @@ export default async function AdminSponsorshipsPage() {
                   {r.sponsor.displayName ?? r.sponsor.user.name}
                   {r.isAnonymous ? " 🕶" : ""}
                 </TableCell>
-                <TableCell>{r.player.user.name}</TableCell>
+                <TableCell>{r.athlete.user.name}</TableCell>
                 <TableCell className="max-w-48 truncate">{r.purpose}</TableCell>
                 <TableCell className="text-right">{formatPaise(r.amountPaise)}</TableCell>
                 <TableCell>

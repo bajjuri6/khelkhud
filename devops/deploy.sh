@@ -19,9 +19,15 @@ assert_azure_login
 
 SKIP_MIGRATE=0
 VERSION=""
+# Default to shipping images over SSH. A registry needs a GitHub classic PAT with
+# write:packages, which `gh auth` does not grant by default — so the zero-setup path is the
+# default and --registry opts in.
+NO_REGISTRY=1
 for arg in "$@"; do
   case "$arg" in
     --skip-migrate) SKIP_MIGRATE=1 ;;
+    --no-registry)  NO_REGISTRY=1 ;;
+    --registry)     NO_REGISTRY=0 ;;
     *)              VERSION="$arg" ;;
   esac
 done
@@ -64,8 +70,17 @@ fi
 # Deploy-time variables go in .deploy.env, which compose reads via --env-file. They are
 # kept OUT of the app's .env so that a redeploy can change the version or the domain
 # without any risk of rewriting the file that holds the secrets.
+if [[ $NO_REGISTRY -eq 1 ]]; then
+  WEB_IMAGE="${WEB_IMAGE_NAME}:${VERSION}"
+  API_IMAGE="${API_IMAGE_NAME}:${VERSION}"
+else
+  WEB_IMAGE="${REGISTRY}/${WEB_IMAGE_NAME}:${VERSION}"
+  API_IMAGE="${REGISTRY}/${API_IMAGE_NAME}:${VERSION}"
+fi
+
 ssh_vm "cat > ${REMOTE_DIR}/.deploy.env" <<EOF
-REGISTRY=${REGISTRY}
+WEB_IMAGE=${WEB_IMAGE}
+API_IMAGE=${API_IMAGE}
 VERSION=${VERSION}
 DOMAIN=${DOMAIN:-domain.invalid}
 SITE_ADDRESS=${SITE_ADDRESS}
@@ -74,20 +89,33 @@ EOF
 
 COMPOSE="docker compose --env-file ${REMOTE_DIR}/.deploy.env -f ${REMOTE_DIR}/compose.prod.yml"
 
-# ---- registry login on the VM ------------------------------------------------
-# The packages are private, so the VM needs credentials to pull. Piped over the existing
-# SSH session and never written to the VM's shell history.
-TOKEN="${GHCR_TOKEN:-${CR_PAT:-}}"
-if [[ -n "$TOKEN" ]]; then
-  info "Logging the VM in to ghcr.io"
-  printf '%s' "$TOKEN" | ssh_vm "docker login ghcr.io -u ${GHCR_OWNER} --password-stdin >/dev/null" \
-    || die "GHCR login failed on the VM."
+# ---- get the images onto the VM ------------------------------------------------
+if [[ $NO_REGISTRY -eq 1 ]]; then
+  # Stream the images straight over the existing SSH connection. No registry, no PAT.
+  # gzip -1: these layers are already compressed, so a higher level costs CPU on both ends
+  # for a percent or two. ~230 MB for the pair.
+  for image in "$WEB_IMAGE" "$API_IMAGE"; do
+    docker image inspect "$image" >/dev/null 2>&1 \
+      || die "$image not built locally. Run: ./devops/build.sh ${VERSION}"
+  done
+  info "Shipping images over SSH (no registry). This is the slow part of a deploy."
+  docker save "$WEB_IMAGE" "$API_IMAGE" \
+    | gzip -1 \
+    | ssh_vm "gunzip | docker load" \
+    || die "Image transfer failed."
+  ok "Images loaded on the VM"
 else
-  warn "GHCR_TOKEN unset — relying on a login the VM already has."
+  TOKEN="${GHCR_TOKEN:-${CR_PAT:-}}"
+  if [[ -n "$TOKEN" ]]; then
+    info "Logging the VM in to ghcr.io"
+    printf '%s' "$TOKEN" | ssh_vm "docker login ghcr.io -u ${GHCR_OWNER} --password-stdin >/dev/null" \
+      || die "GHCR login failed on the VM."
+  else
+    warn "GHCR_TOKEN unset — relying on a login the VM already has."
+  fi
+  info "Pulling ${VERSION}"
+  ssh_vm "cd ${REMOTE_DIR} && ${COMPOSE} pull web api"
 fi
-
-info "Pulling ${VERSION}"
-ssh_vm "cd ${REMOTE_DIR} && ${COMPOSE} pull web api"
 
 # ---- migrations --------------------------------------------------------------
 # Applied from THIS machine, not from a container.

@@ -9,7 +9,7 @@ export default async function SponsorDashboardLayout({
   const me = await getMe();
   if (!me) redirect("/login");
   if (me.role === null) redirect("/onboarding");
-  if (me.role !== "SPONSOR") redirect(me.role === "ADMIN" ? "/admin" : "/dashboard/player");
+  if (me.role !== "SPONSOR") redirect(me.role === "ADMIN" ? "/admin" : "/dashboard/athlete");
   // `theme-app`: the dashboard system, scoped (packages/theme/README.md).
   return (
     <div className="theme-app min-h-full">

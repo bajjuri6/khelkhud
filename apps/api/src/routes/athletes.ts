@@ -2,20 +2,20 @@
 import {
   achievementSchema,
   eventSchema,
-  playerProfileUpdateSchema,
-  requirementCreateSchema,
-  requirementUpdateSchema,
+  athleteProfileUpdateSchema,
+  requestCreateSchema,
+  requestUpdateSchema,
 } from "@khelkhud/shared";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { ApiError } from "../middleware/errors.js";
 import { validate } from "../middleware/validate.js";
 
-export const playersRouter: Router = Router();
+export const athletesRouter: Router = Router();
 
 async function myProfile(uid: string) {
-  const profile = await prisma.playerProfile.findUnique({ where: { userId: uid } });
-  if (!profile) throw new ApiError(404, "NO_PROFILE", "Player profile not found");
+  const profile = await prisma.athleteProfile.findUnique({ where: { userId: uid } });
+  if (!profile) throw new ApiError(404, "NO_PROFILE", "Athlete profile not found");
   return profile;
 }
 
@@ -45,7 +45,7 @@ function qstr(v: unknown): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
-playersRouter.get("/", async (req, res, next) => {
+athletesRouter.get("/", async (req, res, next) => {
   try {
     const q = qstr(req.query.q);
     const sportId = qstr(req.query.sportId);
@@ -78,7 +78,7 @@ playersRouter.get("/", async (req, res, next) => {
       }
     }
 
-    const openStatuses = ["OPEN", "PARTIALLY_FUNDED"] as const;
+    const openStatuses = ["OPEN", "PARTIALLY_FULFILLED"] as const;
     const where = {
       user: {
         isActive: true,
@@ -90,10 +90,10 @@ playersRouter.get("/", async (req, res, next) => {
       ...(locationIds ? { locationId: { in: locationIds } } : {}),
       ...(minPaise !== undefined || maxPaise !== undefined
         ? {
-            requirements: {
+            requests: {
               some: {
                 status: { in: [...openStatuses] },
-                totalAmountPaise: {
+                totalEstimatedPaise: {
                   ...(minPaise !== undefined ? { gte: minPaise } : {}),
                   ...(maxPaise !== undefined ? { lte: maxPaise } : {}),
                 },
@@ -103,15 +103,15 @@ playersRouter.get("/", async (req, res, next) => {
         : {}),
     };
 
-    const [total, players] = await prisma.$transaction([
-      prisma.playerProfile.count({ where }),
-      prisma.playerProfile.findMany({
+    const [total, athletes] = await prisma.$transaction([
+      prisma.athleteProfile.count({ where }),
+      prisma.athleteProfile.findMany({
         where,
         include: {
           user: { select: { name: true, avatarUrl: true } },
           sport: { select: { id: true, name: true } },
           achievements: { orderBy: [{ year: "desc" }, { createdAt: "desc" }], take: 1 },
-          requirements: {
+          requests: {
             where: { status: { in: [...openStatuses] } },
             orderBy: { createdAt: "desc" },
             take: 1,
@@ -135,7 +135,7 @@ playersRouter.get("/", async (req, res, next) => {
     };
 
     res.json({
-      data: players.map((p) => ({
+      data: athletes.map((p) => ({
         id: p.id,
         name: p.user.name,
         avatarUrl: p.user.avatarUrl,
@@ -146,12 +146,12 @@ playersRouter.get("/", async (req, res, next) => {
         locationLabel: label(p.locationId),
         verificationStatus: p.verificationStatus,
         topAchievement: p.achievements[0]?.title ?? null,
-        openRequirement: p.requirements[0]
+        openRequest: p.requests[0]
           ? {
-              id: p.requirements[0].id,
-              title: p.requirements[0].title,
-              totalAmountPaise: p.requirements[0].totalAmountPaise,
-              raisedAmountPaise: p.requirements[0].raisedAmountPaise,
+              id: p.requests[0].id,
+              title: p.requests[0].title,
+              totalEstimatedPaise: p.requests[0].totalEstimatedPaise,
+              raisedAmountPaise: p.requests[0].raisedAmountPaise,
             }
           : null,
       })),
@@ -162,11 +162,11 @@ playersRouter.get("/", async (req, res, next) => {
   }
 });
 
-// ---------- Own profile (PLAYER) ----------
+// ---------- Own profile (ATHLETE) ----------
 
-playersRouter.get("/me", requireAuth, requireRole("PLAYER"), async (req, res, next) => {
+athletesRouter.get("/me", requireAuth, requireRole("ATHLETE"), async (req, res, next) => {
   try {
-    const profile = await prisma.playerProfile.findUnique({
+    const profile = await prisma.athleteProfile.findUnique({
       where: { userId: req.user!.uid },
       include: {
         user: { select: { name: true, email: true, avatarUrl: true } },
@@ -174,27 +174,27 @@ playersRouter.get("/me", requireAuth, requireRole("PLAYER"), async (req, res, ne
         location: true,
         achievements: { orderBy: [{ year: "desc" }, { createdAt: "desc" }] },
         events: { orderBy: { date: "asc" } },
-        requirements: { orderBy: { createdAt: "desc" } },
+        requests: { orderBy: { createdAt: "desc" } },
         documents: { orderBy: { createdAt: "desc" } },
       },
     });
-    if (!profile) throw new ApiError(404, "NO_PROFILE", "Player profile not found");
+    if (!profile) throw new ApiError(404, "NO_PROFILE", "Athlete profile not found");
     res.json({ data: profile });
   } catch (err) {
     next(err);
   }
 });
 
-playersRouter.put(
+athletesRouter.put(
   "/me",
   requireAuth,
-  requireRole("PLAYER"),
-  validate(playerProfileUpdateSchema),
+  requireRole("ATHLETE"),
+  validate(athleteProfileUpdateSchema),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
       const { dateOfBirth, ...rest } = req.body;
-      const updated = await prisma.playerProfile.update({
+      const updated = await prisma.athleteProfile.update({
         where: { id: profile.id },
         data: {
           ...rest,
@@ -212,16 +212,16 @@ playersRouter.put(
 
 // ---------- Achievements ----------
 
-playersRouter.post(
+athletesRouter.post(
   "/me/achievements",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   validate(achievementSchema),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
       const achievement = await prisma.achievement.create({
-        data: { ...req.body, playerId: profile.id },
+        data: { ...req.body, athleteId: profile.id },
       });
       res.status(201).json({ data: achievement });
     } catch (err) {
@@ -230,16 +230,16 @@ playersRouter.post(
   },
 );
 
-playersRouter.put(
+athletesRouter.put(
   "/me/achievements/:id",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   validate(achievementSchema),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
       const existing = await prisma.achievement.findUnique({ where: { id: String(req.params.id) } });
-      if (!existing || existing.playerId !== profile.id) {
+      if (!existing || existing.athleteId !== profile.id) {
         throw new ApiError(404, "NOT_FOUND", "Achievement not found");
       }
       const achievement = await prisma.achievement.update({
@@ -253,15 +253,15 @@ playersRouter.put(
   },
 );
 
-playersRouter.delete(
+athletesRouter.delete(
   "/me/achievements/:id",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
       const existing = await prisma.achievement.findUnique({ where: { id: String(req.params.id) } });
-      if (!existing || existing.playerId !== profile.id) {
+      if (!existing || existing.athleteId !== profile.id) {
         throw new ApiError(404, "NOT_FOUND", "Achievement not found");
       }
       await prisma.achievement.delete({ where: { id: existing.id } });
@@ -274,17 +274,17 @@ playersRouter.delete(
 
 // ---------- Events ----------
 
-playersRouter.post(
+athletesRouter.post(
   "/me/events",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   validate(eventSchema),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
       const { date, ...rest } = req.body;
       const event = await prisma.event.create({
-        data: { ...rest, date: date ? new Date(date) : null, playerId: profile.id },
+        data: { ...rest, date: date ? new Date(date) : null, athleteId: profile.id },
       });
       res.status(201).json({ data: event });
     } catch (err) {
@@ -293,16 +293,16 @@ playersRouter.post(
   },
 );
 
-playersRouter.put(
+athletesRouter.put(
   "/me/events/:id",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   validate(eventSchema),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
       const existing = await prisma.event.findUnique({ where: { id: String(req.params.id) } });
-      if (!existing || existing.playerId !== profile.id) {
+      if (!existing || existing.athleteId !== profile.id) {
         throw new ApiError(404, "NOT_FOUND", "Event not found");
       }
       const { date, ...rest } = req.body;
@@ -317,15 +317,15 @@ playersRouter.put(
   },
 );
 
-playersRouter.delete(
+athletesRouter.delete(
   "/me/events/:id",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
       const existing = await prisma.event.findUnique({ where: { id: String(req.params.id) } });
-      if (!existing || existing.playerId !== profile.id) {
+      if (!existing || existing.athleteId !== profile.id) {
         throw new ApiError(404, "NOT_FOUND", "Event not found");
       }
       await prisma.event.delete({ where: { id: existing.id } });
@@ -336,32 +336,32 @@ playersRouter.delete(
   },
 );
 
-playersRouter.get(
+athletesRouter.get(
   "/me/dashboard",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
-      const [paid, requirements, upcomingEvents] = await Promise.all([
+      const [paid, requests, upcomingEvents] = await Promise.all([
         prisma.sponsorship.findMany({
-          where: { playerId: profile.id, paymentStatus: "PAID" },
+          where: { athleteId: profile.id, paymentStatus: "PAID" },
           select: { amountPaise: true, status: true },
         }),
-        prisma.sponsorshipRequirement.findMany({
-          where: { playerId: profile.id, status: { not: "CLOSED" } },
-          select: { totalAmountPaise: true, raisedAmountPaise: true },
+        prisma.request.findMany({
+          where: { athleteId: profile.id, status: { not: "CLOSED" } },
+          select: { totalEstimatedPaise: true, raisedAmountPaise: true },
         }),
         prisma.event.count({
-          where: { playerId: profile.id, isUpcoming: true },
+          where: { athleteId: profile.id, isUpcoming: true },
         }),
       ]);
       res.json({
         data: {
           totalReceivedPaise: paid.reduce((s, x) => s + x.amountPaise, 0),
           activeSponsorships: paid.filter((s) => s.status === "ACTIVE").length,
-          fundingRequiredPaise: requirements.reduce((s, r) => s + r.totalAmountPaise, 0),
-          fundingReceivedPaise: requirements.reduce((s, r) => s + r.raisedAmountPaise, 0),
+          fundingRequiredPaise: requests.reduce((s, r) => s + r.totalEstimatedPaise, 0),
+          fundingReceivedPaise: requests.reduce((s, r) => s + r.raisedAmountPaise, 0),
           upcomingEvents,
           verificationStatus: profile.verificationStatus,
         },
@@ -372,24 +372,24 @@ playersRouter.get(
   },
 );
 
-// ---------- Sponsorships (player view) ----------
+// ---------- Sponsorships (athlete view) ----------
 
-playersRouter.get(
+athletesRouter.get(
   "/me/sponsorships",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
       const sponsorships = await prisma.sponsorship.findMany({
-        where: { playerId: profile.id, paymentStatus: "PAID" },
+        where: { athleteId: profile.id, paymentStatus: "PAID" },
         include: {
           sponsor: { include: { user: { select: { name: true, avatarUrl: true } } } },
-          requirement: { select: { id: true, title: true } },
+          request: { select: { id: true, title: true } },
         },
         orderBy: { createdAt: "desc" },
       });
-      // Respect anonymity toward the player.
+      // Respect anonymity toward the athlete.
       res.json({
         data: sponsorships.map((s) => ({
           ...s,
@@ -404,50 +404,50 @@ playersRouter.get(
   },
 );
 
-// ---------- Requirements ----------
+// ---------- Requests ----------
 
-playersRouter.post(
-  "/me/requirements",
+athletesRouter.post(
+  "/me/requests",
   requireAuth,
-  requireRole("PLAYER"),
-  validate(requirementCreateSchema),
+  requireRole("ATHLETE"),
+  validate(requestCreateSchema),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
       const { deadline, ...rest } = req.body;
-      const requirement = await prisma.sponsorshipRequirement.create({
-        data: { ...rest, deadline: deadline ? new Date(deadline) : null, playerId: profile.id },
+      const request = await prisma.request.create({
+        data: { ...rest, deadline: deadline ? new Date(deadline) : null, athleteId: profile.id },
       });
-      res.status(201).json({ data: requirement });
+      res.status(201).json({ data: request });
     } catch (err) {
       next(err);
     }
   },
 );
 
-playersRouter.put(
-  "/me/requirements/:id",
+athletesRouter.put(
+  "/me/requests/:id",
   requireAuth,
-  requireRole("PLAYER"),
-  validate(requirementUpdateSchema),
+  requireRole("ATHLETE"),
+  validate(requestUpdateSchema),
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
-      const existing = await prisma.sponsorshipRequirement.findUnique({
+      const existing = await prisma.request.findUnique({
         where: { id: String(req.params.id) },
       });
-      if (!existing || existing.playerId !== profile.id) {
-        throw new ApiError(404, "NOT_FOUND", "Requirement not found");
+      if (!existing || existing.athleteId !== profile.id) {
+        throw new ApiError(404, "NOT_FOUND", "Request not found");
       }
       const { deadline, ...rest } = req.body;
-      const requirement = await prisma.sponsorshipRequirement.update({
+      const request = await prisma.request.update({
         where: { id: existing.id },
         data: {
           ...rest,
           ...(deadline !== undefined ? { deadline: deadline ? new Date(deadline) : null } : {}),
         },
       });
-      res.json({ data: requirement });
+      res.json({ data: request });
     } catch (err) {
       next(err);
     }
@@ -456,11 +456,11 @@ playersRouter.put(
 
 // ---------- Public updates ----------
 
-playersRouter.get("/:id/updates", async (req, res, next) => {
+athletesRouter.get("/:id/updates", async (req, res, next) => {
   try {
     // Only general (non-sponsorship-linked) updates are public.
     const updates = await prisma.sponsorshipUpdate.findMany({
-      where: { playerId: String(req.params.id), sponsorshipId: null },
+      where: { athleteId: String(req.params.id), sponsorshipId: null },
       include: {
         attachments: { select: { id: true, fileName: true, mimeType: true, kind: true } },
       },
@@ -475,9 +475,9 @@ playersRouter.get("/:id/updates", async (req, res, next) => {
 
 // ---------- Public profile ----------
 
-playersRouter.get("/:id", async (req, res, next) => {
+athletesRouter.get("/:id", async (req, res, next) => {
   try {
-    const profile = await prisma.playerProfile.findUnique({
+    const profile = await prisma.athleteProfile.findUnique({
       where: { id: String(req.params.id) },
       include: {
         user: { select: { name: true, avatarUrl: true, isActive: true } },
@@ -485,14 +485,14 @@ playersRouter.get("/:id", async (req, res, next) => {
         location: { select: { id: true, name: true, level: true, parentId: true } },
         achievements: { orderBy: [{ year: "desc" }, { createdAt: "desc" }] },
         events: { orderBy: { date: "asc" } },
-        requirements: {
-          where: { status: { in: ["OPEN", "PARTIALLY_FUNDED", "FULLY_FUNDED"] } },
+        requests: {
+          where: { status: { in: ["OPEN", "PARTIALLY_FULFILLED", "FULFILLED"] } },
           orderBy: { createdAt: "desc" },
         },
       },
     });
     if (!profile || !profile.user.isActive) {
-      throw new ApiError(404, "NOT_FOUND", "Player not found");
+      throw new ApiError(404, "NOT_FOUND", "Athlete not found");
     }
     const locationLabel = await locationChain(profile.locationId);
     res.json({
@@ -513,7 +513,7 @@ playersRouter.get("/:id", async (req, res, next) => {
         verificationStatus: profile.verificationStatus,
         achievements: profile.achievements,
         events: profile.events,
-        requirements: profile.requirements,
+        requests: profile.requests,
       },
     });
   } catch (err) {

@@ -72,10 +72,10 @@ uploadsRouter.post("/confirm", requireAuth, validate(uploadConfirmSchema), async
 
     const uid = req.user!.uid;
     const attachData: Record<string, string> = {};
-    if (attach?.playerProfileId) {
-      const profile = await prisma.playerProfile.findUnique({ where: { id: attach.playerProfileId } });
+    if (attach?.athleteProfileId) {
+      const profile = await prisma.athleteProfile.findUnique({ where: { id: attach.athleteProfileId } });
       if (!profile || profile.userId !== uid) throw new ApiError(403, "FORBIDDEN", "Not your profile");
-      attachData.playerProfileId = profile.id;
+      attachData.athleteProfileId = profile.id;
     }
     if (attach?.sponsorProfileId) {
       const profile = await prisma.sponsorProfile.findUnique({ where: { id: attach.sponsorProfileId } });
@@ -85,9 +85,9 @@ uploadsRouter.post("/confirm", requireAuth, validate(uploadConfirmSchema), async
     if (attach?.sponsorshipId) {
       const s = await prisma.sponsorship.findUnique({
         where: { id: attach.sponsorshipId },
-        include: { player: true, sponsor: true },
+        include: { athlete: true, sponsor: true },
       });
-      if (!s || (s.player.userId !== uid && s.sponsor.userId !== uid)) {
+      if (!s || (s.athlete.userId !== uid && s.sponsor.userId !== uid)) {
         throw new ApiError(403, "FORBIDDEN", "Not your sponsorship");
       }
       attachData.sponsorshipId = s.id;
@@ -95,9 +95,9 @@ uploadsRouter.post("/confirm", requireAuth, validate(uploadConfirmSchema), async
     if (attach?.updateId) {
       const u = await prisma.sponsorshipUpdate.findUnique({
         where: { id: attach.updateId },
-        include: { player: true },
+        include: { athlete: true },
       });
-      if (!u || u.player.userId !== uid) throw new ApiError(403, "FORBIDDEN", "Not your update");
+      if (!u || u.athlete.userId !== uid) throw new ApiError(403, "FORBIDDEN", "Not your update");
       attachData.updateId = u.id;
     }
 
@@ -138,7 +138,7 @@ filesRouter.get("/:documentId", requireAuth, async (req, res, next) => {
   try {
     const doc = await prisma.document.findUnique({
       where: { id: String(req.params.documentId) },
-      include: { sponsorship: { include: { player: true, sponsor: true } } },
+      include: { sponsorship: { include: { athlete: true, sponsor: true } } },
     });
     if (!doc) throw new ApiError(404, "NOT_FOUND", "Document not found");
 
@@ -147,7 +147,7 @@ filesRouter.get("/:documentId", requireAuth, async (req, res, next) => {
     const isAdmin = req.user!.role === "ADMIN";
     const isSponsorshipParty =
       doc.sponsorship != null &&
-      (doc.sponsorship.player.userId === uid || doc.sponsorship.sponsor.userId === uid);
+      (doc.sponsorship.athlete.userId === uid || doc.sponsorship.sponsor.userId === uid);
     const isPublicKind = doc.kind === "PROFILE_PHOTO" || doc.kind === "UPDATE_MEDIA";
 
     if (!isUploader && !isAdmin && !isSponsorshipParty && !isPublicKind) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PLAYER_CATEGORIES = ["UNDER_12", "UNDER_15", "UNDER_19", "SENIOR", "PARA"] as const;
+export const ATHLETE_CATEGORIES = ["UNDER_12", "UNDER_15", "UNDER_19", "SENIOR", "PARA"] as const;
 export const EXPERIENCE_LEVELS = [
   "BEGINNER",
   "DISTRICT",
@@ -9,11 +9,11 @@ export const EXPERIENCE_LEVELS = [
   "INTERNATIONAL",
 ] as const;
 
-export const playerProfileUpdateSchema = z.object({
+export const athleteProfileUpdateSchema = z.object({
   sportId: z.string().nullish(),
   locationId: z.string().nullish(),
   dateOfBirth: z.string().datetime().nullish(),
-  category: z.enum(PLAYER_CATEGORIES).nullish(),
+  category: z.enum(ATHLETE_CATEGORIES).nullish(),
   experienceLevel: z.enum(EXPERIENCE_LEVELS).nullish(),
   bio: z.string().max(2000).nullish(),
   photoKey: z.string().nullish(),
@@ -39,25 +39,25 @@ export const eventSchema = z.object({
   isUpcoming: z.boolean().default(true),
 });
 
-export const requirementBreakdownItemSchema = z.object({
+export const requestBreakdownItemSchema = z.object({
   label: z.string().min(1).max(120),
   amountPaise: z.number().int().positive(),
 });
 
-export const requirementCreateSchema = z.object({
+export const requestCreateSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(2000).nullish(),
-  totalAmountPaise: z.number().int().positive(),
-  breakdown: z.array(requirementBreakdownItemSchema).max(20).nullish(),
+  totalEstimatedPaise: z.number().int().positive(),
+  breakdown: z.array(requestBreakdownItemSchema).max(20).nullish(),
   deadline: z.string().datetime().nullish(),
 });
 
-export const requirementUpdateSchema = requirementCreateSchema.partial().extend({
+export const requestUpdateSchema = requestCreateSchema.partial().extend({
   status: z.enum(["OPEN", "CLOSED"]).optional(),
 });
 
-export type PlayerProfileUpdateInput = z.infer<typeof playerProfileUpdateSchema>;
+export type AthleteProfileUpdateInput = z.infer<typeof athleteProfileUpdateSchema>;
 export type AchievementInput = z.infer<typeof achievementSchema>;
 export type EventInput = z.infer<typeof eventSchema>;
-export type RequirementCreateInput = z.infer<typeof requirementCreateSchema>;
-export type RequirementUpdateInput = z.infer<typeof requirementUpdateSchema>;
+export type RequestCreateInput = z.infer<typeof requestCreateSchema>;
+export type RequestUpdateInput = z.infer<typeof requestUpdateSchema>;

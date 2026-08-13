@@ -21,7 +21,7 @@ export async function uploadFile(
   file: File,
   kind: DocumentKind,
   attach?: {
-    playerProfileId?: string;
+    athleteProfileId?: string;
     sponsorProfileId?: string;
     sponsorshipId?: string;
     updateId?: string;

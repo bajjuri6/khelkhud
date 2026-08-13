@@ -32,7 +32,9 @@ services:
       - api
 
   web:
-    image: ${REGISTRY}/khelkhud-web:${VERSION:-latest}
+    # Set by deploy.sh: a ghcr.io reference when a registry is in use, or a bare
+    # local tag when images are shipped over SSH (--no-registry).
+    image: ${WEB_IMAGE:?WEB_IMAGE not set — deploy.sh writes it into .deploy.env}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -47,7 +49,7 @@ services:
         condition: service_healthy
 
   api:
-    image: ${REGISTRY}/khelkhud-api:${VERSION:-latest}
+    image: ${API_IMAGE:?API_IMAGE not set — deploy.sh writes it into .deploy.env}
     restart: unless-stopped
     env_file:
       - .env

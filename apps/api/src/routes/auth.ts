@@ -31,8 +31,8 @@ function oauthClient(): OAuth2Client {
 
 function dashboardPath(role: string | null): string {
   switch (role) {
-    case "PLAYER":
-      return "/dashboard/player";
+    case "ATHLETE":
+      return "/dashboard/athlete";
     case "SPONSOR":
       return "/dashboard/sponsor";
     case "ADMIN":
@@ -243,15 +243,15 @@ authRouter.get("/google/callback", async (req, res, next) => {
 
 authRouter.post("/role", requireAuth, validate(roleSelectSchema), async (req, res, next) => {
   try {
-    const { role } = req.body as { role: "PLAYER" | "SPONSOR" };
+    const { role } = req.body as { role: "ATHLETE" | "SPONSOR" };
     const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.uid } });
     if (user.role !== null) {
       throw new ApiError(409, "ROLE_ALREADY_SET", "Role has already been chosen");
     }
     const updated = await prisma.$transaction(async (tx) => {
       const u = await tx.user.update({ where: { id: user.id }, data: { role } });
-      if (role === "PLAYER") {
-        await tx.playerProfile.create({ data: { userId: user.id } });
+      if (role === "ATHLETE") {
+        await tx.athleteProfile.create({ data: { userId: user.id } });
       } else {
         await tx.sponsorProfile.create({ data: { userId: user.id } });
       }
@@ -269,7 +269,7 @@ authRouter.get("/me", requireAuth, async (req, res, next) => {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.uid },
       include: {
-        playerProfile: { select: { id: true, verificationStatus: true, sportId: true } },
+        athleteProfile: { select: { id: true, verificationStatus: true, sportId: true } },
         sponsorProfile: { select: { id: true, verificationStatus: true, displayName: true } },
       },
     });
@@ -283,7 +283,7 @@ authRouter.get("/me", requireAuth, async (req, res, next) => {
         name: user.name,
         avatarUrl: user.avatarUrl,
         role: user.role,
-        playerProfile: user.playerProfile,
+        athleteProfile: user.athleteProfile,
         sponsorProfile: user.sponsorProfile,
       },
     });

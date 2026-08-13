@@ -185,7 +185,7 @@ export function DiscoveryFilters({
       </div>
 
       <div className="grid gap-2">
-        <Label>Funding requirement</Label>
+        <Label>Funding request</Label>
         <Select
           value={searchParams.get("funding") ?? ALL}
           onValueChange={(v) => setParam("funding", v)}

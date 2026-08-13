@@ -27,8 +27,8 @@ function pagination(query: Record<string, unknown>) {
 adminRouter.get("/stats", async (_req, res, next) => {
   try {
     const [
-      totalPlayers,
-      verifiedPlayers,
+      totalAthletes,
+      verifiedAthletes,
       totalSponsors,
       verifiedSponsors,
       totalSponsorships,
@@ -37,8 +37,8 @@ adminRouter.get("/stats", async (_req, res, next) => {
       paidAggregate,
       pendingVerifications,
     ] = await Promise.all([
-      prisma.playerProfile.count(),
-      prisma.playerProfile.count({ where: { verificationStatus: "VERIFIED" } }),
+      prisma.athleteProfile.count(),
+      prisma.athleteProfile.count({ where: { verificationStatus: "VERIFIED" } }),
       prisma.sponsorProfile.count(),
       prisma.sponsorProfile.count({ where: { verificationStatus: "VERIFIED" } }),
       prisma.sponsorship.count({ where: { paymentStatus: "PAID" } }),
@@ -48,7 +48,7 @@ adminRouter.get("/stats", async (_req, res, next) => {
         where: { paymentStatus: "PAID" },
         _sum: { amountPaise: true },
       }),
-      prisma.playerProfile.count({
+      prisma.athleteProfile.count({
         where: { verificationStatus: { in: ["PENDING", "INFO_REQUESTED"] } },
       }),
     ]);
@@ -57,7 +57,7 @@ adminRouter.get("/stats", async (_req, res, next) => {
     const paid = await prisma.sponsorship.findMany({
       where: { paymentStatus: "PAID" },
       include: {
-        player: {
+        athlete: {
           select: { sport: { select: { name: true } }, locationId: true },
         },
       },
@@ -69,17 +69,17 @@ adminRouter.get("/stats", async (_req, res, next) => {
     const bySport = new Map<string, number>();
     const byLocation = new Map<string, number>();
     for (const s of paid) {
-      const sport = s.player.sport?.name ?? "Unassigned";
+      const sport = s.athlete.sport?.name ?? "Unassigned";
       bySport.set(sport, (bySport.get(sport) ?? 0) + s.amountPaise);
-      const city = s.player.locationId ? locationById.get(s.player.locationId) : undefined;
+      const city = s.athlete.locationId ? locationById.get(s.athlete.locationId) : undefined;
       const cityName = city?.name ?? "Unknown";
       byLocation.set(cityName, (byLocation.get(cityName) ?? 0) + s.amountPaise);
     }
 
     res.json({
       data: {
-        totalPlayers,
-        verifiedPlayers,
+        totalAthletes,
+        verifiedAthletes,
         totalSponsors,
         verifiedSponsors,
         totalSponsorships,
@@ -114,8 +114,8 @@ adminRouter.get("/verifications", async (req, res, next) => {
         statusFilter ?? { in: ["PENDING", "INFO_REQUESTED"] as ("PENDING" | "INFO_REQUESTED")[] },
     };
 
-    const [players, sponsors] = await Promise.all([
-      prisma.playerProfile.findMany({
+    const [athletes, sponsors] = await Promise.all([
+      prisma.athleteProfile.findMany({
         where,
         include: {
           user: { select: { name: true, email: true, avatarUrl: true } },
@@ -135,7 +135,7 @@ adminRouter.get("/verifications", async (req, res, next) => {
         orderBy: { createdAt: "asc" },
       }),
     ]);
-    res.json({ data: { players, sponsors } });
+    res.json({ data: { athletes, sponsors } });
   } catch (err) {
     next(err);
   }
@@ -152,16 +152,16 @@ adminRouter.post(
         decision: "VERIFIED" | "REJECTED" | "INFO_REQUESTED";
         note?: string | null;
       };
-      if (profileType !== "player" && profileType !== "sponsor") {
-        throw new ApiError(400, "VALIDATION", "profileType must be player or sponsor");
+      if (profileType !== "athlete" && profileType !== "sponsor") {
+        throw new ApiError(400, "VALIDATION", "profileType must be athlete or sponsor");
       }
 
       let userId: string;
-      if (profileType === "player") {
-        const profile = await prisma.playerProfile.findUnique({ where: { id } });
-        if (!profile) throw new ApiError(404, "NOT_FOUND", "Player profile not found");
+      if (profileType === "athlete") {
+        const profile = await prisma.athleteProfile.findUnique({ where: { id } });
+        if (!profile) throw new ApiError(404, "NOT_FOUND", "Athlete profile not found");
         await prisma.$transaction([
-          prisma.playerProfile.update({
+          prisma.athleteProfile.update({
             where: { id },
             data: {
               verificationStatus: decision,
@@ -170,7 +170,7 @@ adminRouter.post(
           }),
           prisma.verificationRecord.create({
             data: {
-              subjectPlayerId: id,
+              subjectAthleteId: id,
               reviewerUserId: req.user!.uid,
               decision,
               note: note ?? null,
@@ -230,12 +230,12 @@ adminRouter.post(
 
 // ---------- Monitors ----------
 
-adminRouter.get("/players", async (req, res, next) => {
+adminRouter.get("/athletes", async (req, res, next) => {
   try {
     const { page, pageSize, skip, take } = pagination(req.query as Record<string, unknown>);
     const [total, rows] = await prisma.$transaction([
-      prisma.playerProfile.count(),
-      prisma.playerProfile.findMany({
+      prisma.athleteProfile.count(),
+      prisma.athleteProfile.findMany({
         include: {
           user: { select: { name: true, email: true, isActive: true } },
           sport: { select: { name: true } },
@@ -276,7 +276,7 @@ adminRouter.get("/sponsorships", async (req, res, next) => {
       prisma.sponsorship.count(),
       prisma.sponsorship.findMany({
         include: {
-          player: { include: { user: { select: { name: true } } } },
+          athlete: { include: { user: { select: { name: true } } } },
           sponsor: { include: { user: { select: { name: true } } } },
         },
         orderBy: { createdAt: "desc" },

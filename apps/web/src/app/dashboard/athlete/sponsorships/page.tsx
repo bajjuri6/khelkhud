@@ -17,11 +17,11 @@ type SponsorshipRow = {
   utilizationStatus: string;
   createdAt: string;
   sponsor: { displayName: string | null; user: { name: string; avatarUrl: string | null } };
-  requirement: { id: string; title: string } | null;
+  request: { id: string; title: string } | null;
 };
 
-export default async function PlayerSponsorshipsPage() {
-  const res = await apiServer<{ data: SponsorshipRow[] }>("/api/players/me/sponsorships");
+export default async function AthleteSponsorshipsPage() {
+  const res = await apiServer<{ data: SponsorshipRow[] }>("/api/athletes/me/sponsorships");
   const sponsorships = res?.data ?? [];
 
   return (
@@ -34,11 +34,11 @@ export default async function PlayerSponsorshipsPage() {
       {sponsorships.length === 0 ? (
         <div className="mt-8 rounded-lg border border-dashed p-12 text-center">
           <p className="text-muted-foreground">
-            No sponsorships yet. Complete your profile and add requirements so sponsors can find
+            No sponsorships yet. Complete your profile and add requests so sponsors can find
             you.
           </p>
           <Button asChild variant="outline" className="mt-4">
-            <Link href="/dashboard/player/requirements">Manage requirements</Link>
+            <Link href="/dashboard/athlete/requests">Manage requests</Link>
           </Button>
         </div>
       ) : (
@@ -62,7 +62,7 @@ export default async function PlayerSponsorshipsPage() {
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {s.purpose}
-                        {s.requirement ? ` · ${s.requirement.title}` : ""}
+                        {s.request ? ` · ${s.request.title}` : ""}
                       </p>
                     </div>
                   </div>
@@ -74,7 +74,7 @@ export default async function PlayerSponsorshipsPage() {
                       </Badge>
                     </div>
                     <Button asChild variant="outline" size="sm">
-                      <Link href={`/dashboard/player/sponsorships/${s.id}`}>Manage</Link>
+                      <Link href={`/dashboard/athlete/sponsorships/${s.id}`}>Manage</Link>
                     </Button>
                   </div>
                 </CardContent>

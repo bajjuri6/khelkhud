@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { AthleteCard, type AthleteCardData } from "@/components/athlete-card";
 import { Horizon } from "@/components/horizon";
 import { KitCosts } from "@/components/landing/kit-costs";
+import { FaqSection } from "@/components/landing/faq-section";
+import { FaqJsonLd } from "@/components/seo/faq-jsonld";
+import { FAQS } from "@/lib/faq";
 import { Reveal } from "@/components/reveal";
 import { apiServer } from "@/lib/api-server";
 
@@ -25,7 +28,7 @@ import { apiServer } from "@/lib/api-server";
 // second one; two makes the page stripy and the contrast stops meaning anything.
 //
 // The narrative uses ONE composite athlete — a javelin thrower from Nizamabad with an
-// ₹18,400 requirement — carried from the gap section through to the receipts, so the
+// ₹18,400 request — carried from the gap section through to the receipts, so the
 // abstract claim ("we track every rupee") is answered by a concrete number the reader
 // already met. She is explicitly labelled as illustrative wherever a figure is shown.
 
@@ -44,7 +47,7 @@ const STEPS = [
   {
     n: "02",
     title: "Sponsor",
-    body: "Fund one specific line item, not a vague cause. ₹2,000 for a month of coaching is a real sponsorship here, and it goes to a named requirement.",
+    body: "Fund one specific line item, not a vague cause. ₹2,000 for a month of coaching is a real sponsorship here, and it goes to a named request.",
   },
   {
     n: "03",
@@ -73,7 +76,7 @@ const ATHLETE_STEPS = [
   },
   {
     t: "Show what happened",
-    d: "Upload receipts as you spend, and post updates after the meet. Sponsors who see the result come back for the next requirement.",
+    d: "Upload receipts as you spend, and post updates after the meet. Sponsors who see the result come back for the next request.",
   },
 ];
 
@@ -98,11 +101,13 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function HomePage() {
-  const featuredRes = await apiServer<{ data: AthleteCardData[] }>("/api/players?pageSize=3");
+  const featuredRes = await apiServer<{ data: AthleteCardData[] }>("/api/athletes?pageSize=3");
   const featured = featuredRes?.data ?? [];
 
   return (
     <>
+      <FaqJsonLd faqs={FAQS} />
+
       {/* ── the hero ───────────────────────────────────────────────────────── */}
       {/* The illustration does the arguing: a barefoot batter hitting a six with a taped
           plank, through someone's window. Nobody needs a metaphor explained to them after
@@ -264,12 +269,12 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* The requirement, itemised. The specificity is the argument. */}
+          {/* The request, itemised. The specificity is the argument. */}
           <Reveal delay={160}>
             <div className="mx-auto mt-12 max-w-2xl rounded-xl border border-cream/15 bg-predawn-lift/70 p-7 sm:p-9">
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <div>
-                  <p className="eyebrow text-marigold">One requirement</p>
+                  <p className="eyebrow text-marigold">One request</p>
                   <p className="mt-2 font-display text-xl text-cream">
                     Javelin, Under 19 &mdash; Nizamabad
                   </p>
@@ -298,7 +303,7 @@ export default async function HomePage() {
                 />
               </div>
               <p className="mt-5 text-xs leading-relaxed text-cream/40">
-                Illustrative example. Real requirements are written by the athlete and
+                Illustrative example. Real requests are written by the athlete and
                 verified before they appear.
               </p>
             </div>
@@ -378,7 +383,7 @@ export default async function HomePage() {
                 is marketing, not accounting.
               </p>
               <Button asChild size="hero" variant="accent" className="mt-9">
-                <Link href="/athletes">Browse open requirements</Link>
+                <Link href="/athletes">Browse open requests</Link>
               </Button>
             </Reveal>
 
@@ -520,6 +525,8 @@ export default async function HomePage() {
           </ol>
         </div>
       </section>
+
+      <FaqSection />
 
       {/* ── night again · the close ────────────────────────────────────────── */}
       <section className="dawn-dusk relative overflow-hidden">

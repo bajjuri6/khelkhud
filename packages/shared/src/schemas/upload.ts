@@ -57,7 +57,7 @@ export const uploadConfirmSchema = z.object({
   sizeBytes: z.number().int().positive(),
   attach: z
     .object({
-      playerProfileId: z.string().optional(),
+      athleteProfileId: z.string().optional(),
       sponsorProfileId: z.string().optional(),
       sponsorshipId: z.string().optional(),
       updateId: z.string().optional(),

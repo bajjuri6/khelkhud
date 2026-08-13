@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { apiClient } from "@/lib/api";
 import { profilePhotoUrl } from "@/lib/upload";
-import type { PublicPlayer } from "@/lib/types";
+import type { PublicAthlete } from "@/lib/types";
 
 type CreatedOrder = {
   sponsorshipId: string;
@@ -56,17 +56,17 @@ async function loadRazorpayScript(): Promise<void> {
   });
 }
 
-export function SponsorshipCheckout({ player }: { player: PublicPlayer }) {
+export function SponsorshipCheckout({ athlete }: { athlete: PublicAthlete }) {
   const [amount, setAmount] = useState("");
   const [purpose, setPurpose] = useState("");
-  const [requirementId, setRequirementId] = useState(NONE);
+  const [requestId, setRequestId] = useState(NONE);
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [stubOrder, setStubOrder] = useState<CreatedOrder | null>(null);
   const [success, setSuccess] = useState<{ code: string } | null>(null);
 
-  const photo = profilePhotoUrl(player.photoKey) ?? player.avatarUrl;
-  const openRequirements = player.requirements.filter((r) => r.status !== "CLOSED");
+  const photo = profilePhotoUrl(athlete.photoKey) ?? athlete.avatarUrl;
+  const openRequests = athlete.requests.filter((r) => r.status !== "CLOSED");
 
   async function verify(order: CreatedOrder, paymentId: string, signature: string) {
     const res = await apiClient<{ data: { code: string } }>(
@@ -98,8 +98,8 @@ export function SponsorshipCheckout({ player }: { player: PublicPlayer }) {
       const res = await apiClient<{ data: CreatedOrder }>("/api/sponsorships", {
         method: "POST",
         body: JSON.stringify({
-          playerId: player.id,
-          requirementId: requirementId === NONE ? null : requirementId,
+          athleteId: athlete.id,
+          requestId: requestId === NONE ? null : requestId,
           amountPaise,
           purpose: purpose.trim(),
           isAnonymous,
@@ -158,7 +158,7 @@ export function SponsorshipCheckout({ player }: { player: PublicPlayer }) {
           </span>
           <h2 className="text-xl font-bold">Sponsorship successful!</h2>
           <p className="text-muted-foreground">
-            You are now supporting <span className="font-medium">{player.name}</span>.
+            You are now supporting <span className="font-medium">{athlete.name}</span>.
           </p>
           <p className="rounded-md bg-muted px-4 py-2 font-mono text-sm">{success.code}</p>
           <div className="flex gap-3">
@@ -166,7 +166,7 @@ export function SponsorshipCheckout({ player }: { player: PublicPlayer }) {
               <Link href="/dashboard/sponsor/sponsorships">Track your sponsorships</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href={`/athletes/${player.id}`}>Back to profile</Link>
+              <Link href={`/athletes/${athlete.id}`}>Back to profile</Link>
             </Button>
           </div>
         </CardContent>
@@ -180,29 +180,29 @@ export function SponsorshipCheckout({ player }: { player: PublicPlayer }) {
         <CardHeader>
           <div className="flex items-center gap-3">
             <Avatar className="size-12">
-              {photo ? <AvatarImage src={photo} alt={player.name} /> : null}
-              <AvatarFallback>{player.name[0]}</AvatarFallback>
+              {photo ? <AvatarImage src={photo} alt={athlete.name} /> : null}
+              <AvatarFallback>{athlete.name[0]}</AvatarFallback>
             </Avatar>
             <div>
-              <CardTitle>Sponsor {player.name}</CardTitle>
+              <CardTitle>Sponsor {athlete.name}</CardTitle>
               <p className="text-sm text-muted-foreground">
-                {[player.sport?.name, player.locationLabel].filter(Boolean).join(" · ")}
+                {[athlete.sport?.name, athlete.locationLabel].filter(Boolean).join(" · ")}
               </p>
             </div>
           </div>
         </CardHeader>
         <CardContent className="grid gap-4">
-          {openRequirements.length > 0 ? (
+          {openRequests.length > 0 ? (
             <div className="grid gap-2">
-              <Label>Support a specific requirement (optional)</Label>
+              <Label>Support a specific request (optional)</Label>
               <Select
-                value={requirementId}
+                value={requestId}
                 onValueChange={(v) => {
-                  setRequirementId(v);
-                  const req = openRequirements.find((r) => r.id === v);
+                  setRequestId(v);
+                  const req = openRequests.find((r) => r.id === v);
                   if (req) {
                     setPurpose(req.title);
-                    const remaining = req.totalAmountPaise - req.raisedAmountPaise;
+                    const remaining = req.totalEstimatedPaise - req.raisedAmountPaise;
                     if (remaining > 0 && !amount) setAmount(String(remaining / 100));
                   }
                 }}
@@ -212,10 +212,10 @@ export function SponsorshipCheckout({ player }: { player: PublicPlayer }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>General support</SelectItem>
-                  {openRequirements.map((r) => (
+                  {openRequests.map((r) => (
                     <SelectItem key={r.id} value={r.id}>
                       {r.title} ({formatPaise(r.raisedAmountPaise)} /{" "}
-                      {formatPaise(r.totalAmountPaise)})
+                      {formatPaise(r.totalEstimatedPaise)})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -250,7 +250,7 @@ export function SponsorshipCheckout({ player }: { player: PublicPlayer }) {
               checked={isAnonymous}
               onChange={(e) => setIsAnonymous(e.target.checked)}
             />
-            Sponsor anonymously (the player won&apos;t see your name)
+            Sponsor anonymously (the athlete won&apos;t see your name)
           </label>
 
           <Button size="lg" onClick={() => void submit()} disabled={submitting}>

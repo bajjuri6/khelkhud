@@ -31,7 +31,12 @@ if az_cli postgres flexible-server show -g "$AZ_RG" -n "$PG_SERVER" -o none 2>/d
 else
   # Generated here and shown exactly once. Azure will not reveal it again; the only other
   # recovery path is `az postgres flexible-server update --admin-password`.
-  PG_PASSWORD="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+  # NOT `tr -dc ... </dev/urandom | head -c 32`: head exits after 32 bytes, tr dies on
+  # SIGPIPE, and under `set -o pipefail` that non-zero status kills the script — silently,
+  # right after the password is generated and before anything is created.
+  # `cut` reads its input to EOF, so no SIGPIPE. The Kk/9 bookends guarantee Azure's
+  # complexity rule (3 of upper/lower/digit/special) regardless of what random produces.
+  PG_PASSWORD="Kk$(openssl rand -base64 48 | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-28)9"
 
   info "Creating ${PG_SERVER} (${PG_SKU}, ${PG_STORAGE_GB}GB, PG${PG_VERSION}). Takes 5-10 minutes."
   az_cli postgres flexible-server create \

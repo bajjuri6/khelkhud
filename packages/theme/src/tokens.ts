@@ -174,6 +174,13 @@ export const dawn = {
 
 // ---- identity ---------------------------------------------------------------------
 export const wordmark = 'khelkhud'; // always lowercase, `khel` in ink, `khud` in marigold
+
+// The backing organisation. Flagged by the operator as liable to change, so it is a token
+// rather than a string typed into the footer and the JSON-LD separately.
+export const foundation = {
+  name: 'Sarvejana Foundation',
+  prefix: 'Powered by',
+} as const;
 export const tagline = "Talent is everywhere. Support isn't.";
 export const mission =
   'Making Telangana — and eventually India — a sporting, healthy population by closing the gap between potential and resources.';

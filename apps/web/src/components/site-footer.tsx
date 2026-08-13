@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { foundation } from "@khelkhud/theme";
 import { Wordmark } from "@/components/wordmark";
 
 // Night again. The footer closing on nightfall is the permitted return in the scroll arc
@@ -18,7 +19,7 @@ const COLUMNS: { heading: string; links: { label: string; href: string }[] }[] =
     links: [
       { label: "Create your profile", href: "/login" },
       { label: "What you'll need", href: "/#athletes" },
-      { label: "Post a requirement", href: "/dashboard/player/requirements" },
+      { label: "Post a request", href: "/dashboard/athlete/requests" },
     ],
   },
 ];
@@ -37,7 +38,7 @@ export function SiteFooter() {
             </p>
             <p className="mt-4 text-sm leading-relaxed">
               Closing the gap between what an athlete in Telangana can do and what they can
-              afford &mdash; one specific requirement, one receipt, at a time.
+              afford &mdash; one specific request, one receipt, at a time.
             </p>
           </div>
 
@@ -60,7 +61,13 @@ export function SiteFooter() {
         <div className="rule-fade my-10" />
 
         <div className="flex flex-col gap-3 text-xs sm:flex-row sm:items-center sm:justify-between">
-          <p>&copy; {new Date().getFullYear()} khelkhud. Hyderabad, Telangana.</p>
+          <p>
+            &copy; {new Date().getFullYear()} khelkhud. Hyderabad, Telangana.
+            <span className="mt-1 block text-cream/45 sm:mt-0 sm:ml-2 sm:inline">
+              {foundation.prefix}{" "}
+              <span className="text-cream/70">{foundation.name}</span>.
+            </span>
+          </p>
           <p className="text-cream/45">
             Payments by Razorpay. Every sponsorship is receipted and traceable.
           </p>

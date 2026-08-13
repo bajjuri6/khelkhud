@@ -1,12 +1,12 @@
 import { apiServer } from "@/lib/api-server";
-import type { Location, PlayerProfileMe, Sport } from "@/lib/types";
+import type { Location, AthleteProfileMe, Sport } from "@/lib/types";
 import { ProfileEditor } from "./profile-editor";
 
 export const metadata = { title: "My Profile" };
 
-export default async function PlayerProfilePage() {
+export default async function AthleteProfilePage() {
   const [profileRes, sportsRes, locationsRes] = await Promise.all([
-    apiServer<{ data: PlayerProfileMe }>("/api/players/me"),
+    apiServer<{ data: AthleteProfileMe }>("/api/athletes/me"),
     apiServer<{ data: Sport[] }>("/api/meta/sports"),
     apiServer<{ data: Location[] }>("/api/meta/locations"),
   ]);

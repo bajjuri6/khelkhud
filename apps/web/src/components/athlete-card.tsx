@@ -14,10 +14,10 @@ export type AthleteCardData = {
   locationLabel: string | null;
   verificationStatus: string;
   topAchievement: string | null;
-  openRequirement: {
+  openRequest: {
     id: string;
     title: string;
-    totalAmountPaise: number;
+    totalEstimatedPaise: number;
     raisedAmountPaise: number;
   } | null;
 };
@@ -27,13 +27,13 @@ export type AthleteCardData = {
  * profile" button inside it gives you two tap targets for one intent, and on mobile the
  * button is the smaller of the two.
  *
- * The requirement, not the athlete's face, is the bottom-anchored element: what someone
+ * The request, not the athlete's face, is the bottom-anchored element: what someone
  * needs is the thing a sponsor is deciding about, and it must land in the same place on
  * every card in the grid so the row is scannable.
  */
 export function AthleteCard({ athlete }: { athlete: AthleteCardData }) {
   const photo = profilePhotoUrl(athlete.photoKey) ?? athlete.avatarUrl;
-  const req = athlete.openRequirement;
+  const req = athlete.openRequest;
   const meta = [
     athlete.sport?.name,
     athlete.category ? CATEGORY_LABELS[athlete.category] : null,
@@ -94,11 +94,11 @@ export function AthleteCard({ athlete }: { athlete: AthleteCardData }) {
       {req ? (
         <Horizon
           raisedPaise={req.raisedAmountPaise}
-          totalPaise={req.totalAmountPaise}
+          totalPaise={req.totalEstimatedPaise}
           label={req.title}
         />
       ) : (
-        <p className="text-sm text-sweat">No open requirement right now</p>
+        <p className="text-sm text-sweat">No open request right now</p>
       )}
 
       <span className="mt-5 text-sm font-medium text-foreground transition-colors group-hover:text-marigold">

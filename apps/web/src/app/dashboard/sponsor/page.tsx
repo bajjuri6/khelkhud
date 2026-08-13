@@ -9,7 +9,7 @@ export const metadata = { title: "Sponsor Dashboard" };
 
 type Dashboard = {
   totalSponsoredPaise: number;
-  playersSupported: number;
+  athletesSupported: number;
   activeSponsorships: number;
   completedSponsorships: number;
   utilizationCompleted: number;
@@ -47,7 +47,7 @@ export default async function SponsorDashboardPage() {
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile label="Total sponsored" value={formatPaise(d.totalSponsoredPaise)} />
-            <StatTile label="Players supported" value={String(d.playersSupported)} />
+            <StatTile label="Athletes supported" value={String(d.athletesSupported)} />
             <StatTile label="Active sponsorships" value={String(d.activeSponsorships)} />
             <StatTile label="Completed" value={String(d.completedSponsorships)} />
           </div>

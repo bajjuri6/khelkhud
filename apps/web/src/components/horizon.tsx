@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
  * set in tabular numerals directly above it.
  *
  * This is the one piece of chrome shared by the landing page and the product, and it is
- * what makes a khelkhud screenshot recognisable. Use it everywhere a requirement's funding
+ * what makes a khelkhud screenshot recognisable. Use it everywhere a request's funding
  * state is shown; do not reach for <Progress>.
  */
 export function Horizon({
@@ -19,7 +19,7 @@ export function Horizon({
 }: {
   raisedPaise: number;
   totalPaise: number;
-  /** Optional caption on the left of the figures row, e.g. the requirement title. */
+  /** Optional caption on the left of the figures row, e.g. the request title. */
   label?: string;
   /** `light` = on cream. `dark` = on predawn/nightfall surfaces. */
   tone?: "light" | "dark";
@@ -31,7 +31,7 @@ export function Horizon({
 
   return (
     <div className={cn("w-full", className)}>
-      {/* line-clamp-2, not truncate. Requirement titles are written by athletes and run
+      {/* line-clamp-2, not truncate. Request titles are written by athletes and run
           long ("Season kit and tournament travel"); clipping to one line loses the noun
           that tells a sponsor what they would be paying for. */}
       {label ? (

@@ -38,7 +38,7 @@ type QueueProfile = {
   verificationRecords: { decision: string; note: string | null; createdAt: string }[];
 };
 
-export type QueueData = { players: QueueProfile[]; sponsors: QueueProfile[] };
+export type QueueData = { athletes: QueueProfile[]; sponsors: QueueProfile[] };
 
 type Decision = "VERIFIED" | "REJECTED" | "INFO_REQUESTED";
 
@@ -59,7 +59,7 @@ export function VerificationQueue({
   const pathname = usePathname();
   const [dialog, setDialog] = useState<{
     profile: QueueProfile;
-    type: "player" | "sponsor";
+    type: "athlete" | "sponsor";
     decision: Decision;
   } | null>(null);
   const [note, setNote] = useState("");
@@ -84,7 +84,7 @@ export function VerificationQueue({
     }
   }
 
-  function Row({ profile, type }: { profile: QueueProfile; type: "player" | "sponsor" }) {
+  function Row({ profile, type }: { profile: QueueProfile; type: "athlete" | "sponsor" }) {
     return (
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
@@ -152,7 +152,7 @@ export function VerificationQueue({
     );
   }
 
-  const isEmpty = data.players.length === 0 && data.sponsors.length === 0;
+  const isEmpty = data.athletes.length === 0 && data.sponsors.length === 0;
 
   return (
     <div className="mt-6 grid gap-4">
@@ -182,8 +182,8 @@ export function VerificationQueue({
         </div>
       ) : (
         <>
-          {data.players.map((p) => (
-            <Row key={p.id} profile={p} type="player" />
+          {data.athletes.map((p) => (
+            <Row key={p.id} profile={p} type="athlete" />
           ))}
           {data.sponsors.map((p) => (
             <Row key={p.id} profile={p} type="sponsor" />

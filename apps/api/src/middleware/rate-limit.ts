@@ -11,7 +11,7 @@ import { ApiError } from "./errors.js";
  *
  * It exists because `passwordSchema` sets a 10-character minimum with no composition
  * rules. That is the right call, but it is only safe if online guessing is throttled;
- * length requirements do nothing against an attacker making thousands of attempts.
+ * length requests do nothing against an attacker making thousands of attempts.
  */
 
 type Bucket = { count: number; resetAt: number };

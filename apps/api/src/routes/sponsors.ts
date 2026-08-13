@@ -36,7 +36,7 @@ sponsorsRouter.get(
       const paid = await prisma.sponsorship.findMany({
         where: { sponsorId: profile.id, paymentStatus: "PAID" },
         include: {
-          player: {
+          athlete: {
             include: {
               user: { select: { name: true, avatarUrl: true } },
               sport: { select: { name: true } },
@@ -47,7 +47,7 @@ sponsorsRouter.get(
       });
 
       const totalSponsoredPaise = paid.reduce((s, x) => s + x.amountPaise, 0);
-      const playersSupported = new Set(paid.map((s) => s.playerId)).size;
+      const athletesSupported = new Set(paid.map((s) => s.athleteId)).size;
       const active = paid.filter((s) => s.status === "ACTIVE").length;
       const completed = paid.filter((s) => s.status === "COMPLETED").length;
       const utilizationCompleted = paid.filter(
@@ -57,16 +57,16 @@ sponsorsRouter.get(
       const bySport = new Map<string, number>();
       const byLocation = new Map<string, number>();
       for (const s of paid) {
-        const sport = s.player.sport?.name ?? "Unassigned";
+        const sport = s.athlete.sport?.name ?? "Unassigned";
         bySport.set(sport, (bySport.get(sport) ?? 0) + s.amountPaise);
-        const loc = s.player.location?.name ?? "Unknown";
+        const loc = s.athlete.location?.name ?? "Unknown";
         byLocation.set(loc, (byLocation.get(loc) ?? 0) + s.amountPaise);
       }
 
       res.json({
         data: {
           totalSponsoredPaise,
-          playersSupported,
+          athletesSupported,
           activeSponsorships: active,
           completedSponsorships: completed,
           utilizationCompleted,
@@ -95,7 +95,7 @@ sponsorsRouter.get(
       const sponsorships = await prisma.sponsorship.findMany({
         where: { sponsorId: profile.id },
         include: {
-          player: {
+          athlete: {
             include: { user: { select: { name: true, avatarUrl: true } }, sport: true },
           },
           updates: { orderBy: { createdAt: "desc" }, take: 1 },

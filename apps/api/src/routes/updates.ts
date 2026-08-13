@@ -11,15 +11,15 @@ export const updatesRouter: Router = Router();
 updatesRouter.post(
   "/",
   requireAuth,
-  requireRole("PLAYER"),
+  requireRole("ATHLETE"),
   validate(updateCreateSchema),
   async (req, res, next) => {
     try {
-      const profile = await prisma.playerProfile.findUnique({
+      const profile = await prisma.athleteProfile.findUnique({
         where: { userId: req.user!.uid },
         include: { user: { select: { name: true } } },
       });
-      if (!profile) throw new ApiError(404, "NO_PROFILE", "Player profile not found");
+      if (!profile) throw new ApiError(404, "NO_PROFILE", "Athlete profile not found");
 
       const { title, body, sponsorshipId, documentIds } = req.body as {
         title: string;
@@ -32,7 +32,7 @@ updatesRouter.post(
         const sponsorship = await prisma.sponsorship.findUnique({
           where: { id: sponsorshipId },
         });
-        if (!sponsorship || sponsorship.playerId !== profile.id) {
+        if (!sponsorship || sponsorship.athleteId !== profile.id) {
           throw new ApiError(404, "NOT_FOUND", "Sponsorship not found");
         }
       }
@@ -47,7 +47,7 @@ updatesRouter.post(
 
       const update = await prisma.sponsorshipUpdate.create({
         data: {
-          playerId: profile.id,
+          athleteId: profile.id,
           sponsorshipId: sponsorshipId ?? null,
           title,
           body,
@@ -59,18 +59,18 @@ updatesRouter.post(
       });
 
       // Fan out to the linked sponsor, or to every sponsor with a paid
-      // sponsorship on this player for general updates (deduped).
+      // sponsorship on this athlete for general updates (deduped).
       const sponsorships = await prisma.sponsorship.findMany({
         where: sponsorshipId
           ? { id: sponsorshipId }
-          : { playerId: profile.id, paymentStatus: "PAID" },
+          : { athleteId: profile.id, paymentStatus: "PAID" },
         include: { sponsor: { select: { userId: true } } },
       });
       const notified = new Set<string>();
       for (const s of sponsorships) {
         if (notified.has(s.sponsor.userId)) continue;
         notified.add(s.sponsor.userId);
-        await notify(s.sponsor.userId, "PLAYER_UPDATE", {
+        await notify(s.sponsor.userId, "ATHLETE_UPDATE", {
           title: `${profile.user.name} posted an update`,
           body: title,
           linkUrl: `/dashboard/sponsor/sponsorships/${s.id}`,

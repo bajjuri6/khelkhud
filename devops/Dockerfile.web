@@ -54,9 +54,15 @@ ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
     NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production
 
-# The theme's CSS is generated from tokens.ts, and globals.css imports it. Without this
-# the Tailwind build resolves an empty file and every brand utility silently vanishes.
+# Both workspace packages must be built before next build:
+#   theme  — its CSS is generated from tokens.ts and globals.css imports it. Without this
+#            Tailwind resolves an empty file and every brand utility silently vanishes.
+#   shared — it is a COMPILED package now; its exports point at dist, so next build fails
+#            outright with "Module not found: Can't resolve '@khelkhud/shared'".
+# The theme failure is silent and the shared failure is loud, which is the only reason the
+# second one was caught immediately and the first needed a comment.
 RUN pnpm --filter @khelkhud/theme build
+RUN pnpm --filter @khelkhud/shared build
 RUN pnpm --filter @khelkhud/web exec next build
 
 # ---------------------------------------------------------------------------

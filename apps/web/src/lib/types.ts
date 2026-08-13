@@ -16,7 +16,7 @@ export type Achievement = {
   proofDocumentId: string | null;
 };
 
-export type PlayerEvent = {
+export type AthleteEvent = {
   id: string;
   name: string;
   date: string | null;
@@ -28,18 +28,18 @@ export type PlayerEvent = {
 
 export type BreakdownItem = { label: string; amountPaise: number };
 
-export type Requirement = {
+export type Request = {
   id: string;
   title: string;
   description: string | null;
-  totalAmountPaise: number;
+  totalEstimatedPaise: number;
   raisedAmountPaise: number;
-  status: "OPEN" | "PARTIALLY_FUNDED" | "FULLY_FUNDED" | "CLOSED";
+  status: "OPEN" | "PARTIALLY_FULFILLED" | "FULFILLED" | "CLOSED";
   breakdown: BreakdownItem[] | null;
   deadline: string | null;
 };
 
-export type PlayerProfileMe = {
+export type AthleteProfileMe = {
   id: string;
   sportId: string | null;
   locationId: string | null;
@@ -54,11 +54,11 @@ export type PlayerProfileMe = {
   verificationStatus: "PENDING" | "VERIFIED" | "REJECTED" | "INFO_REQUESTED";
   user: { name: string; email: string; avatarUrl: string | null };
   achievements: Achievement[];
-  events: PlayerEvent[];
-  requirements: Requirement[];
+  events: AthleteEvent[];
+  requests: Request[];
 };
 
-export type PublicPlayer = {
+export type PublicAthlete = {
   id: string;
   name: string;
   avatarUrl: string | null;
@@ -74,8 +74,8 @@ export type PublicPlayer = {
   coachName: string | null;
   verificationStatus: string;
   achievements: Achievement[];
-  events: PlayerEvent[];
-  requirements: Requirement[];
+  events: AthleteEvent[];
+  requests: Request[];
 };
 
 export type AttachmentRef = { id: string; fileName: string; mimeType: string; kind: string };
@@ -115,8 +115,8 @@ export type SponsorshipDetail = {
     orgName?: string | null;
     user: { name: string; avatarUrl: string | null };
   };
-  player: { id: string; name: string; avatarUrl: string | null; photoKey: string | null };
-  requirement: Requirement | null;
+  athlete: { id: string; name: string; avatarUrl: string | null; photoKey: string | null };
+  request: Request | null;
   allocations: Allocation[];
   updates: SponsorshipUpdateEntry[];
   documents: AttachmentRef[];
@@ -128,7 +128,7 @@ export type SponsorshipDetail = {
     providerPaymentId: string | null;
     occurredAt: string;
   }[];
-  viewer: { isSponsor: boolean; isPlayer: boolean; isAdmin: boolean };
+  viewer: { isSponsor: boolean; isAthlete: boolean; isAdmin: boolean };
 };
 
 export const CATEGORY_LABELS: Record<string, string> = {

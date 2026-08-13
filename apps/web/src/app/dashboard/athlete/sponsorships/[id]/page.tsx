@@ -5,7 +5,7 @@ import { TrackingManager } from "./tracking-manager";
 
 export const metadata = { title: "Manage Sponsorship" };
 
-export default async function PlayerSponsorshipDetailPage({
+export default async function AthleteSponsorshipDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;

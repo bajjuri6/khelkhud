@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { StatTile } from "@/components/stat-tile";
 import { apiServer, getMe } from "@/lib/api-server";
 
-export const metadata = { title: "Player Dashboard" };
+export const metadata = { title: "Athlete Dashboard" };
 
 type Dashboard = {
   totalReceivedPaise: number;
@@ -17,10 +17,10 @@ type Dashboard = {
   verificationStatus: string;
 };
 
-export default async function PlayerDashboardPage() {
+export default async function AthleteDashboardPage() {
   const [me, dashRes] = await Promise.all([
     getMe(),
-    apiServer<{ data: Dashboard }>("/api/players/me/dashboard"),
+    apiServer<{ data: Dashboard }>("/api/athletes/me/dashboard"),
   ]);
   const d = dashRes?.data;
 
@@ -42,11 +42,11 @@ export default async function PlayerDashboardPage() {
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline">
-            <Link href="/dashboard/player/profile">Edit profile</Link>
+            <Link href="/dashboard/athlete/profile">Edit profile</Link>
           </Button>
-          {me?.playerProfile ? (
+          {me?.athleteProfile ? (
             <Button asChild variant="outline">
-              <Link href={`/athletes/${me.playerProfile.id}`}>Public page</Link>
+              <Link href={`/athletes/${me.athleteProfile.id}`}>Public page</Link>
             </Button>
           ) : null}
         </div>
@@ -74,20 +74,20 @@ export default async function PlayerDashboardPage() {
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline" size="sm">
-              <Link href="/dashboard/player/sponsorships">View sponsorships</Link>
+              <Link href="/dashboard/athlete/sponsorships">View sponsorships</Link>
             </Button>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Requirements</CardTitle>
+            <CardTitle className="text-base">Requests</CardTitle>
             <CardDescription>
               List what you need — equipment, tournament fees, travel, coaching.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline" size="sm">
-              <Link href="/dashboard/player/requirements">Manage requirements</Link>
+              <Link href="/dashboard/athlete/requests">Manage requests</Link>
             </Button>
           </CardContent>
         </Card>

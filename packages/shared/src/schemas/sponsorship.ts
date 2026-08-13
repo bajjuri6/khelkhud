@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 export const sponsorshipCreateSchema = z.object({
-  playerId: z.string().min(1),
-  requirementId: z.string().nullish(),
+  athleteId: z.string().min(1),
+  requestId: z.string().nullish(),
   amountPaise: z
     .number()
     .int()

@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
 
 function dashboardPath(role: Me["role"]): string {
   switch (role) {
-    case "PLAYER":
-      return "/dashboard/player";
+    case "ATHLETE":
+      return "/dashboard/athlete";
     case "SPONSOR":
       return "/dashboard/sponsor";
     case "ADMIN":

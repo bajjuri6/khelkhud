@@ -35,7 +35,7 @@ export default async function SponsorSponsorshipDetailPage({
   const res = await apiServer<{ data: SponsorshipDetail }>(`/api/sponsorships/${id}`);
   if (!res) notFound();
   const s = res.data;
-  const photo = profilePhotoUrl(s.player.photoKey) ?? s.player.avatarUrl;
+  const photo = profilePhotoUrl(s.athlete.photoKey) ?? s.athlete.avatarUrl;
   const utilizedPaise = s.allocations
     .filter((a) => a.status !== "PLANNED")
     .reduce((sum, a) => sum + a.amountPaise, 0);
@@ -47,8 +47,8 @@ export default async function SponsorSponsorshipDetailPage({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Avatar className="size-14">
-            {photo ? <AvatarImage src={photo} alt={s.player.name} /> : null}
-            <AvatarFallback>{s.player.name[0]}</AvatarFallback>
+            {photo ? <AvatarImage src={photo} alt={s.athlete.name} /> : null}
+            <AvatarFallback>{s.athlete.name[0]}</AvatarFallback>
           </Avatar>
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -58,7 +58,7 @@ export default async function SponsorSponsorshipDetailPage({
               <span className="font-mono text-sm text-muted-foreground">{s.code}</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              {s.player.name} · {s.purpose} ·{" "}
+              {s.athlete.name} · {s.purpose} ·{" "}
               {new Date(s.createdAt).toLocaleDateString("en-IN", {
                 day: "numeric",
                 month: "long",
@@ -139,7 +139,7 @@ export default async function SponsorSponsorshipDetailPage({
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              The player hasn&apos;t broken down utilization yet. You&apos;ll be notified when they
+              The athlete hasn&apos;t broken down utilization yet. You&apos;ll be notified when they
               do.
             </p>
           )}
@@ -148,12 +148,12 @@ export default async function SponsorSponsorshipDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Updates from {s.player.name}</CardTitle>
+          <CardTitle className="text-base">Updates from {s.athlete.name}</CardTitle>
         </CardHeader>
         <CardContent>
           {s.updates.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No updates yet. You&apos;ll be notified when the player posts progress.
+              No updates yet. You&apos;ll be notified when the athlete posts progress.
             </p>
           ) : (
             <div className="grid gap-4">
@@ -228,7 +228,7 @@ export default async function SponsorSponsorshipDetailPage({
 
       <div>
         <Button asChild variant="outline">
-          <Link href={`/athletes/${s.player.id}`}>View {s.player.name}&apos;s profile</Link>
+          <Link href={`/athletes/${s.athlete.id}`}>View {s.athlete.name}&apos;s profile</Link>
         </Button>
       </div>
     </div>
