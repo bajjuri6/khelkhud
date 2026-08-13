@@ -1,4 +1,5 @@
 ﻿import { Router } from "express";
+import { LocationLevel, RequestStatus } from "@prisma/client";
 import {
   achievementSchema,
   eventSchema,
@@ -6,6 +7,7 @@ import {
   requestCreateSchema,
   requestUpdateSchema,
 } from "@khelkhud/shared";
+import type { RequestCreateInput, RequestItemInput, RequestUpdateInput } from "@khelkhud/shared";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { ApiError } from "../middleware/errors.js";
@@ -17,6 +19,45 @@ async function myProfile(uid: string) {
   const profile = await prisma.athleteProfile.findUnique({ where: { userId: uid } });
   if (!profile) throw new ApiError(404, "NO_PROFILE", "Athlete profile not found");
   return profile;
+}
+
+/**
+ * The village a request belongs to, which is the athlete's own.
+ *
+ * Every request fans out to the sponsors watching a village and lands in that village's
+ * coordinator queue, so a request without one is invisible to both. A district or a city
+ * would put it in front of the wrong diaspora and nobody with authority to validate it,
+ * which is worse than refusing — hence the 400 rather than a nearest guess.
+ */
+async function myVillageId(locationId: string | null): Promise<string> {
+  const location = locationId
+    ? await prisma.location.findUnique({
+        where: { id: locationId },
+        select: { id: true, level: true },
+      })
+    : null;
+  if (!location || location.level !== LocationLevel.VILLAGE) {
+    throw new ApiError(
+      400,
+      "NO_VILLAGE",
+      "Set your village on your profile before raising a request — sponsors and coordinators find requests by village.",
+    );
+  }
+  return location.id;
+}
+
+/** Never trust a client-sent total: it is a number nobody has checked against the items. */
+function totalEstimatedPaise(items: RequestItemInput[]): number {
+  return items.reduce((sum, i) => sum + i.estimatedPaise * i.quantity, 0);
+}
+
+function itemRows(items: RequestItemInput[]) {
+  return items.map((i) => ({
+    label: i.label,
+    quantity: i.quantity,
+    estimatedPaise: i.estimatedPaise,
+    note: i.note ?? null,
+  }));
 }
 
 /** Age in whole years, so date of birth stays private. */
@@ -174,7 +215,10 @@ athletesRouter.get("/me", requireAuth, requireRole("ATHLETE"), async (req, res, 
         location: true,
         achievements: { orderBy: [{ year: "desc" }, { createdAt: "desc" }] },
         events: { orderBy: { date: "asc" } },
-        requests: { orderBy: { createdAt: "desc" } },
+        requests: {
+          include: { items: { orderBy: { createdAt: "asc" } } },
+          orderBy: { createdAt: "desc" },
+        },
         documents: { orderBy: { createdAt: "desc" } },
       },
     });
@@ -414,9 +458,24 @@ athletesRouter.post(
   async (req, res, next) => {
     try {
       const profile = await myProfile(req.user!.uid);
-      const { deadline, ...rest } = req.body;
+      const { deadline, items, ...rest } = req.body as RequestCreateInput;
+      const villageId = await myVillageId(profile.locationId);
+
       const request = await prisma.request.create({
-        data: { ...rest, deadline: deadline ? new Date(deadline) : null, athleteId: profile.id },
+        data: {
+          ...rest,
+          villageId,
+          athleteId: profile.id,
+          raisedById: req.user!.uid,
+          // An athlete vouching for themselves is not validation. It waits for the village
+          // coordinator, who is the trust anchor; a coordinator raising the same request
+          // would skip this because they are the validator.
+          status: RequestStatus.PENDING_VALIDATION,
+          totalEstimatedPaise: totalEstimatedPaise(items),
+          deadline: deadline ? new Date(deadline) : null,
+          items: { create: itemRows(items) },
+        },
+        include: { items: true },
       });
       res.status(201).json({ data: request });
     } catch (err) {
@@ -439,13 +498,57 @@ athletesRouter.put(
       if (!existing || existing.athleteId !== profile.id) {
         throw new ApiError(404, "NOT_FOUND", "Request not found");
       }
-      const { deadline, ...rest } = req.body;
-      const request = await prisma.request.update({
-        where: { id: existing.id },
-        data: {
-          ...rest,
-          ...(deadline !== undefined ? { deadline: deadline ? new Date(deadline) : null } : {}),
-        },
+      const { deadline, items, status, ...rest } = req.body as RequestUpdateInput;
+
+      // Withdrawing is always allowed and changes nothing else, so it short-circuits the
+      // edit rules below.
+      if (status === "CLOSED") {
+        const closed = await prisma.request.update({
+          where: { id: existing.id },
+          data: { status: RequestStatus.CLOSED },
+          include: { items: true },
+        });
+        res.json({ data: closed });
+        return;
+      }
+
+      // An empty body would otherwise send a validated request back to the queue for
+      // nothing, which reads to the coordinator as a change that never happened.
+      if (deadline === undefined && !items && Object.keys(rest).length === 0) {
+        throw new ApiError(400, "NOTHING_TO_UPDATE", "Nothing to change");
+      }
+      if (existing.status === RequestStatus.CLOSED) {
+        throw new ApiError(409, "REQUEST_CLOSED", "This request is closed. Raise a new one.");
+      }
+      if (existing.raisedAmountPaise > 0) {
+        throw new ApiError(
+          409,
+          "ALREADY_FUNDED",
+          "Sponsors have already given toward this request. Close it and raise a new one rather than changing what they agreed to.",
+        );
+      }
+
+      const request = await prisma.$transaction(async (tx) => {
+        // Items are replaced wholesale: the client edits the list as a unit, and diffing
+        // by id would only add a way for the stored total to disagree with the lines.
+        if (items) await tx.requestItem.deleteMany({ where: { requestId: existing.id } });
+        return tx.request.update({
+          where: { id: existing.id },
+          data: {
+            ...rest,
+            ...(deadline !== undefined ? { deadline: deadline ? new Date(deadline) : null } : {}),
+            ...(items
+              ? { items: { create: itemRows(items) }, totalEstimatedPaise: totalEstimatedPaise(items) }
+              : {}),
+            // Any edit goes back to the coordinator. Otherwise a validated request could
+            // quietly turn into a different one after it had been vouched for.
+            status: RequestStatus.PENDING_VALIDATION,
+            validatedById: null,
+            validatedAt: null,
+            rejectionNote: null,
+          },
+          include: { items: true },
+        });
       });
       res.json({ data: request });
     } catch (err) {
@@ -487,6 +590,7 @@ athletesRouter.get("/:id", async (req, res, next) => {
         events: { orderBy: { date: "asc" } },
         requests: {
           where: { status: { in: ["OPEN", "PARTIALLY_FULFILLED", "FULFILLED"] } },
+          include: { items: { orderBy: { createdAt: "asc" } } },
           orderBy: { createdAt: "desc" },
         },
       },

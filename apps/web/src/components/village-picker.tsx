@@ -86,12 +86,12 @@ export function VillagePicker({
     return (
       <div className="space-y-1.5">
         <Label>{label}</Label>
-        <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-cream-2 px-3 py-2.5">
+        <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-muted px-3 py-2.5">
           <div className="min-w-0">
             <p className="text-sm font-medium">{value.name}</p>
-            <p className="truncate text-xs text-slate">{value.displayPath}</p>
+            <p className="truncate text-xs text-muted-foreground">{value.displayPath}</p>
             {value.pincode ? (
-              <p className="mt-0.5 text-xs text-sweat" data-numeric>
+              <p className="mt-0.5 text-xs text-muted-foreground" data-numeric>
                 PIN {value.pincode}
               </p>
             ) : null}
@@ -142,17 +142,17 @@ export function VillagePicker({
         </div>
       </div>
 
-      <p className="text-xs leading-relaxed text-sweat">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         The PIN code matters: several villages share a name. Adding it usually narrows the
         list to one.
       </p>
 
-      {loading ? <p className="text-sm text-slate">Searching…</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Searching…</p> : null}
 
       {!loading && searched && results.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border bg-cream-2/60 p-4 text-sm">
+        <div className="rounded-md border border-dashed border-border bg-muted/60 p-4 text-sm">
           <p className="font-medium">No village matched.</p>
-          <p className="mt-1 text-slate">
+          <p className="mt-1 text-muted-foreground">
             Check the spelling, or try the PIN code on its own to see everything it covers.
             If it is genuinely missing, a coordinator or admin can add it.
           </p>
@@ -166,15 +166,15 @@ export function VillagePicker({
               <button
                 type="button"
                 onClick={() => onChange(v)}
-                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-cream-2"
+                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted"
               >
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{v.name}</span>
-                  <span className="block truncate text-xs text-slate">{v.displayPath}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{v.displayPath}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   {v.pincode ? (
-                    <span className="text-xs text-sweat" data-numeric>
+                    <span className="text-xs text-muted-foreground" data-numeric>
                       {v.pincode}
                     </span>
                   ) : null}
@@ -183,7 +183,7 @@ export function VillagePicker({
                   {!v.isVerified ? (
                     <span
                       title="Not yet reconciled against the government directory"
-                      className="rounded-full bg-sweat/12 px-2 py-0.5 text-[0.625rem] text-slate"
+                      className="rounded-full bg-muted px-2 py-0.5 text-[0.625rem] text-muted-foreground"
                     >
                       unverified
                     </span>
@@ -191,7 +191,7 @@ export function VillagePicker({
                   <span
                     className={cn(
                       "text-[0.625rem] tabular-nums",
-                      v.score >= 0.9 ? "text-ground" : "text-sweat",
+                      v.score >= 0.9 ? "text-ground" : "text-muted-foreground",
                     )}
                   >
                     {Math.round(v.score * 100)}%

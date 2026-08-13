@@ -1,9 +1,18 @@
 import { z } from "zod";
 
+// Exactly two roles may be self-assigned, and the list is deliberately narrower than the
+// Role enum. COORDINATOR is a delegation of trust an admin makes — CoordinatorProfile
+// carries the appointing admin's id, which a self-signup has nothing to put in. SUPPLIER
+// may write to the catalogue and so must be allowed by an admin first. ADMIN comes from
+// ADMIN_EMAILS at sign-in, never from a request body. Adding any of them here would turn
+// POST /api/auth/role into a self-serve privilege escalation.
+export const SELF_SELECTABLE_ROLES = ["ATHLETE", "SPONSOR"] as const;
+
 export const roleSelectSchema = z.object({
-  role: z.enum(["ATHLETE", "SPONSOR"]),
+  role: z.enum(SELF_SELECTABLE_ROLES),
 });
 
+export type SelfSelectableRole = (typeof SELF_SELECTABLE_ROLES)[number];
 export type RoleSelectInput = z.infer<typeof roleSelectSchema>;
 
 // Native email + password, alongside Google. Many athletes and small sponsors either have

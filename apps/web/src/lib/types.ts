@@ -26,16 +26,31 @@ export type AthleteEvent = {
   isUpcoming: boolean;
 };
 
-export type BreakdownItem = { label: string; amountPaise: number };
+export type RequestItem = {
+  id: string;
+  label: string;
+  quantity: number;
+  estimatedPaise: number;
+  fulfilledQty: number;
+  note: string | null;
+};
 
 export type Request = {
   id: string;
+  kind: "EQUIPMENT" | "CASH";
   title: string;
   description: string | null;
   totalEstimatedPaise: number;
   raisedAmountPaise: number;
-  status: "OPEN" | "PARTIALLY_FULFILLED" | "FULFILLED" | "CLOSED";
-  breakdown: BreakdownItem[] | null;
+  status:
+    | "DRAFT"
+    | "PENDING_VALIDATION"
+    | "REJECTED"
+    | "OPEN"
+    | "PARTIALLY_FULFILLED"
+    | "FULFILLED"
+    | "CLOSED";
+  items: RequestItem[];
   deadline: string | null;
 };
 

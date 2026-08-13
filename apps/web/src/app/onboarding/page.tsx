@@ -1,15 +1,33 @@
 import { redirect } from "next/navigation";
-import { getMe } from "@/lib/api-server";
+import { getMe, type Me } from "@/lib/api-server";
 import { RoleChooser } from "./role-chooser";
 
 export const metadata = { title: "Choose your role" };
 
+// Every non-null role must resolve to a real page. A coordinator or supplier is appointed
+// by an admin, so they arrive here already roled and would otherwise be shown a chooser
+// that cannot describe them — or worse, be bounced here again by the enumerated checks
+// this replaces, which only knew about athletes, sponsors and admins.
+function dashboardPath(role: Exclude<Me["role"], null>): string {
+  switch (role) {
+    case "ATHLETE":
+      return "/dashboard/athlete";
+    case "SPONSOR":
+      return "/dashboard/sponsor";
+    case "COORDINATOR":
+      return "/dashboard/coordinator";
+    // The supplier surface lands with the catalogue (v2 doc §8, step 4).
+    case "SUPPLIER":
+      return "/";
+    case "ADMIN":
+      return "/admin";
+  }
+}
+
 export default async function OnboardingPage() {
   const me = await getMe();
   if (!me) redirect("/login");
-  if (me.role === "ATHLETE") redirect("/dashboard/athlete");
-  if (me.role === "SPONSOR") redirect("/dashboard/sponsor");
-  if (me.role === "ADMIN") redirect("/admin");
+  if (me.role !== null) redirect(dashboardPath(me.role));
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-6 py-20 text-center">

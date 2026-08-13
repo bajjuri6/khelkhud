@@ -69,9 +69,9 @@ export function ValidationQueue({ pending }: { pending: QueueRequest[] }) {
 
   if (pending.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-cream-2/60 p-12 text-center">
+      <div className="rounded-xl border border-dashed border-border bg-muted/60 p-12 text-center">
         <p className="font-display text-h3">Nothing waiting on you.</p>
-        <p className="mt-2 text-sm text-slate">
+        <p className="mt-2 text-sm text-muted-foreground">
           Requests raised by athletes in your villages appear here. Anything you raise
           yourself goes live immediately.
         </p>
@@ -95,7 +95,7 @@ export function ValidationQueue({ pending }: { pending: QueueRequest[] }) {
                     {r.kind === "EQUIPMENT" ? "Equipment" : "Cash"} &middot; {r.village.name}
                   </p>
                   <h3 className="mt-2 font-display text-h3 font-semibold">{r.title}</h3>
-                  <p className="mt-1 text-sm text-slate">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     For <span className="font-medium text-foreground">{who}</span> ({what})
                   </p>
                 </div>
@@ -105,17 +105,17 @@ export function ValidationQueue({ pending }: { pending: QueueRequest[] }) {
               </div>
 
               {r.description ? (
-                <p className="mt-4 text-sm leading-relaxed text-slate">{r.description}</p>
+                <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{r.description}</p>
               ) : null}
 
               {r.items.length > 0 ? (
                 <ul className="mt-4 space-y-2 border-t border-border pt-4">
                   {r.items.map((it) => (
                     <li key={it.id} className="flex justify-between gap-4 text-sm">
-                      <span className="text-slate">
+                      <span className="text-muted-foreground">
                         {it.label}
                         {it.quantity > 1 ? (
-                          <span className="text-sweat"> &times; {it.quantity}</span>
+                          <span className="text-muted-foreground"> &times; {it.quantity}</span>
                         ) : null}
                       </span>
                       <span className="shrink-0 font-medium" data-numeric>
@@ -144,7 +144,7 @@ export function ValidationQueue({ pending }: { pending: QueueRequest[] }) {
                 >
                   Send back
                 </Button>
-                <span className="text-xs text-sweat">
+                <span className="text-xs text-muted-foreground">
                   Approving vouches for this person. Your name is recorded against it.
                 </span>
               </div>

@@ -163,8 +163,19 @@ export default async function AthletePage({ params }: { params: Promise<{ id: st
           <h2 className="text-lg font-semibold">Sponsorship requests</h2>
           <div className="mt-3 grid gap-4">
             {p.requests.map((r) => {
-              const pct =
-                r.totalEstimatedPaise > 0
+              const items = r.items ?? [];
+              // Equipment progress is counted in things delivered, not rupees. A bat that
+              // arrived is progress even though no money passed through khelkhud, and
+              // showing "Rs 0 raised" against a request that is half fulfilled reads as
+              // failure to the one person it is about.
+              const isKind = r.kind === "EQUIPMENT";
+              const wanted = items.reduce((n, i) => n + i.quantity, 0);
+              const got = items.reduce((n, i) => n + Math.min(i.fulfilledQty, i.quantity), 0);
+              const pct = isKind
+                ? wanted > 0
+                  ? Math.min(100, Math.round((got / wanted) * 100))
+                  : 0
+                : r.totalEstimatedPaise > 0
                   ? Math.min(100, Math.round((r.raisedAmountPaise / r.totalEstimatedPaise) * 100))
                   : 0;
               return (
@@ -179,19 +190,25 @@ export default async function AthletePage({ params }: { params: Promise<{ id: st
                     <div>
                       <div className="mb-1 flex justify-between text-sm">
                         <span className="font-medium">
-                          {formatPaise(r.raisedAmountPaise)} / {formatPaise(r.totalEstimatedPaise)}{" "}
-                          sponsored
+                          {isKind
+                            ? `${got} of ${wanted} item${wanted === 1 ? "" : "s"} received`
+                            : `${formatPaise(r.raisedAmountPaise)} / ${formatPaise(
+                                r.totalEstimatedPaise,
+                              )} sponsored`}
                         </span>
                         <span className="text-muted-foreground">{pct}%</span>
                       </div>
                       <Progress value={pct} />
                     </div>
-                    {r.breakdown && r.breakdown.length > 0 ? (
+                    {items.length > 0 ? (
                       <ul className="grid gap-1 text-sm text-muted-foreground">
-                        {r.breakdown.map((b, i) => (
-                          <li key={i} className="flex justify-between">
-                            <span>{b.label}</span>
-                            <span>{formatPaise(b.amountPaise)}</span>
+                        {items.map((i) => (
+                          <li key={i.id} className="flex justify-between gap-4">
+                            <span>
+                              {i.label}
+                              {i.quantity > 1 ? ` × ${i.quantity}` : ""}
+                            </span>
+                            <span>{formatPaise(i.estimatedPaise * i.quantity)}</span>
                           </li>
                         ))}
                       </ul>

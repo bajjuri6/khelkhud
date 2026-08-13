@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import { OAuth2Client } from "google-auth-library";
 import { loginSchema, registerSchema, roleSelectSchema } from "@khelkhud/shared";
-import type { LoginInput, RegisterInput } from "@khelkhud/shared";
+import type { LoginInput, RegisterInput, RoleSelectInput } from "@khelkhud/shared";
 import { config } from "../config.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
@@ -37,6 +37,11 @@ function dashboardPath(role: string | null): string {
       return "/dashboard/sponsor";
     case "COORDINATOR":
       return "/dashboard/coordinator";
+    // No supplier surface yet — it arrives with the catalogue (v2 doc §8, step 4). Until
+    // then send them to the public site: wrong, but a real page, whereas the `/onboarding`
+    // default would bounce a user who already has a role back into role selection.
+    case "SUPPLIER":
+      return "/";
     case "ADMIN":
       return "/admin";
     default:
@@ -245,17 +250,32 @@ authRouter.get("/google/callback", async (req, res, next) => {
 
 authRouter.post("/role", requireAuth, validate(roleSelectSchema), async (req, res, next) => {
   try {
-    const { role } = req.body as { role: "ATHLETE" | "SPONSOR" };
+    // roleSelectSchema admits only ATHLETE and SPONSOR; COORDINATOR, SUPPLIER and ADMIN
+    // are assigned by an admin and can never arrive here. The switch below is written to
+    // fail closed rather than fall through to a profile type, so widening the schema
+    // without widening this handler is a compile error, not a silently wrong profile.
+    const { role } = req.body as RoleSelectInput;
     const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.uid } });
     if (user.role !== null) {
       throw new ApiError(409, "ROLE_ALREADY_SET", "Role has already been chosen");
     }
     const updated = await prisma.$transaction(async (tx) => {
       const u = await tx.user.update({ where: { id: user.id }, data: { role } });
-      if (role === "ATHLETE") {
-        await tx.athleteProfile.create({ data: { userId: user.id } });
-      } else {
-        await tx.sponsorProfile.create({ data: { userId: user.id } });
+      switch (role) {
+        case "ATHLETE":
+          await tx.athleteProfile.create({ data: { userId: user.id } });
+          break;
+        case "SPONSOR":
+          await tx.sponsorProfile.create({ data: { userId: user.id } });
+          break;
+        default: {
+          const exhaustive: never = role;
+          throw new ApiError(
+            400,
+            "ROLE_NOT_SELF_ASSIGNABLE",
+            `Role ${String(exhaustive)} is assigned by khelkhud, not chosen`,
+          );
+        }
       }
       return u;
     });

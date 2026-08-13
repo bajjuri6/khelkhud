@@ -46,7 +46,7 @@ export default async function CoordinatorPage() {
     return (
       <div className="mx-auto w-full max-w-3xl px-6 py-16">
         <h1 className="text-h1 font-semibold">Not a coordinator</h1>
-        <p className="mt-4 leading-relaxed text-slate">
+        <p className="mt-4 leading-relaxed text-muted-foreground">
           This page is for village coordinators. If you should have access, an admin needs
           to appoint you and assign your villages.
         </p>
@@ -59,13 +59,13 @@ export default async function CoordinatorPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-12">
-      <p className="eyebrow text-slate">Village coordinator</p>
+      <p className="eyebrow text-muted-foreground">Village coordinator</p>
       <h1 className="mt-3 text-h1 font-semibold">
         {pending.length > 0
           ? `${pending.length} request${pending.length === 1 ? "" : "s"} waiting on you.`
           : "Your villages are up to date."}
       </h1>
-      <p className="mt-4 max-w-2xl leading-relaxed text-slate">
+      <p className="mt-4 max-w-2xl leading-relaxed text-muted-foreground">
         You validate requests raised by athletes in{" "}
         {villages.length === 1 ? (
           <span className="font-medium text-foreground">{villages[0]!.name}</span>
@@ -91,7 +91,7 @@ export default async function CoordinatorPage() {
             <span
               key={v.id}
               title={v.displayPath ?? undefined}
-              className="rounded-full border border-border bg-cream-2 px-3 py-1 text-xs text-slate"
+              className="rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground"
             >
               {v.name}
             </span>
@@ -112,11 +112,11 @@ export default async function CoordinatorPage() {
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{r.title}</span>
-                  <span className="block text-xs text-slate">
+                  <span className="block text-xs text-muted-foreground">
                     {r.athlete?.user.name ?? r.institution?.name} &middot; {r.village.name}
                   </span>
                 </span>
-                <span className="shrink-0 rounded-full bg-cream-2 px-2.5 py-0.5 text-xs text-slate">
+                <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                   {STATUS_LABEL[r.status] ?? r.status}
                 </span>
               </li>
