@@ -200,6 +200,16 @@ export default async function AthletePage({ params }: { params: Promise<{ id: st
                       </div>
                       <Progress value={pct} />
                     </div>
+                    {r.validatedBy ? (
+                      <p className="text-xs text-muted-foreground">
+                        Validated by {r.validatedBy.designation}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Opened by khelkhud &mdash; no village coordinator has been appointed
+                        here yet, so nobody local has vouched for this request.
+                      </p>
+                    )}
                     {items.length > 0 ? (
                       <ul className="grid gap-1 text-sm text-muted-foreground">
                         {items.map((i) => (

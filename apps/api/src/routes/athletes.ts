@@ -590,7 +590,13 @@ athletesRouter.get("/:id", async (req, res, next) => {
         events: { orderBy: { date: "asc" } },
         requests: {
           where: { status: { in: ["OPEN", "PARTIALLY_FULFILLED", "FULFILLED"] } },
-          include: { items: { orderBy: { createdAt: "asc" } } },
+          include: {
+            items: { orderBy: { createdAt: "asc" } },
+            // Who vouched, so a sponsor can weigh it. Null means it was opened centrally
+            // because the village has no coordinator - a weaker signal, and the profile
+            // says so rather than letting silence read as endorsement.
+            validatedBy: { select: { designation: true } },
+          },
           orderBy: { createdAt: "desc" },
         },
       },

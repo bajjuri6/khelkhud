@@ -6,6 +6,7 @@ const NAV = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/verifications", label: "Verifications" },
   { href: "/admin/coordinators", label: "Coordinators" },
+  { href: "/admin/requests", label: "Uncovered requests" },
   { href: "/admin/sponsorships", label: "Sponsorships" },
   { href: "/admin/transactions", label: "Transactions" },
   { href: "/admin/settings", label: "Sports & Locations" },

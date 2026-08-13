@@ -6,6 +6,7 @@ import {
   locationUpdateSchema,
   sportCreateSchema,
   sportUpdateSchema,
+  requestValidationSchema,
   verificationDecisionSchema,
 } from "@khelkhud/shared";
 import { prisma } from "../lib/prisma.js";
@@ -13,7 +14,15 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { ApiError } from "../middleware/errors.js";
 import { validate } from "../middleware/validate.js";
 import { notify } from "../services/notify.js";
-import type { CoordinatorAppointInput, CoordinatorUpdateInput } from "@khelkhud/shared";
+import type {
+  CoordinatorAppointInput,
+  CoordinatorUpdateInput,
+  RequestValidationInput,
+} from "@khelkhud/shared";
+import {
+  decideRequestAsAdmin,
+  orphanedRequestQueue,
+} from "../services/coordinator.service.js";
 
 export const adminRouter: Router = Router();
 
@@ -484,6 +493,39 @@ adminRouter.patch(
           user: { select: { id: true, name: true, email: true } },
           villages: { select: { id: true, name: true, displayPath: true } },
         },
+      });
+      res.json({ data: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------- Orphaned requests ----------
+//
+// The safety net for villages with no coordinator. Without it an athlete there raises a
+// request that literally nobody has the authority to approve — see orphanedRequestQueue.
+
+adminRouter.get("/requests/orphaned", async (_req, res, next) => {
+  try {
+    const { pending, villagesAwaiting } = await orphanedRequestQueue();
+    res.json({ data: { pending }, meta: { villagesAwaiting, pendingCount: pending.length } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post(
+  "/requests/:id/decide",
+  validate(requestValidationSchema),
+  async (req, res, next) => {
+    try {
+      const body = req.body as RequestValidationInput;
+      const updated = await decideRequestAsAdmin({
+        adminUserId: req.user!.uid,
+        requestId: String(req.params.id),
+        decision: body.decision,
+        note: body.note,
       });
       res.json({ data: updated });
     } catch (err) {

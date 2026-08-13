@@ -51,6 +51,8 @@ export type Request = {
     | "FULFILLED"
     | "CLOSED";
   items: RequestItem[];
+  /** Null when opened centrally: no coordinator covers the village. */
+  validatedBy: { designation: string } | null;
   deadline: string | null;
 };
 

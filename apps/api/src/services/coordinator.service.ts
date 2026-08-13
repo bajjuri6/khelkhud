@@ -174,3 +174,139 @@ export async function decideRequest(input: {
 
   return updated;
 }
+
+/**
+ * The orphan problem.
+ *
+ * An athlete can raise a request in a village that has no coordinator. It lands in
+ * PENDING_VALIDATION and there is, structurally, nobody who can approve it: every
+ * decision path above is gated on a CoordinatorProfile covering that village. The athlete
+ * is told "waiting on your coordinator" and waits forever.
+ *
+ * So admins are the fallback — but ONLY where no active coordinator exists. If one does,
+ * their judgement stands; central override would quietly hollow out the role the whole
+ * model is built on. That is the difference between a safety net and a bypass.
+ */
+
+/** Villages with no active coordinator have no route to approval. This finds their backlog. */
+export async function orphanedRequestQueue() {
+  const where = {
+    status: RequestStatus.PENDING_VALIDATION,
+    village: { coordinators: { none: { isActive: true } } },
+  } as const;
+
+  const [pending, villagesAwaiting] = await Promise.all([
+    prisma.request.findMany({
+      where,
+      include: {
+        athlete: { include: { user: { select: { name: true } }, sport: true } },
+        institution: true,
+        items: true,
+        village: { select: { id: true, name: true, displayPath: true } },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 100,
+    }),
+    // Surfaced separately so an admin can see WHERE to appoint someone, rather than
+    // inferring it from a request list. Clearing the backlog is treating the symptom;
+    // appointing a coordinator is the fix.
+    prisma.location.findMany({
+      where: { level: "VILLAGE", coordinators: { none: { isActive: true } }, requests: { some: {} } },
+      select: {
+        id: true,
+        name: true,
+        displayPath: true,
+        _count: { select: { requests: true, athleteProfiles: true } },
+      },
+      orderBy: { name: "asc" },
+      take: 100,
+    }),
+  ]);
+
+  return { pending, villagesAwaiting };
+}
+
+/**
+ * Admin decides a request in an uncovered village.
+ *
+ * `validatedById` stays null on purpose: it points at a CoordinatorProfile and there is no
+ * honest value to put there. Null means "validated, but not by someone local" — and the
+ * public surfaces say so, because a sponsor deciding whether to trust an ask deserves to
+ * know a village neighbour did not vouch for it.
+ */
+export async function decideRequestAsAdmin(input: {
+  adminUserId: string;
+  requestId: string;
+  decision: "APPROVE" | "REJECT";
+  note?: string;
+}) {
+  const request = await prisma.request.findUnique({
+    where: { id: input.requestId },
+    include: {
+      athlete: { include: { user: { select: { id: true } } } },
+      village: { include: { coordinators: { where: { isActive: true }, select: { id: true } } } },
+    },
+  });
+  if (!request) throw new ApiError(404, "NOT_FOUND", "Request not found");
+
+  if (request.village.coordinators.length > 0) {
+    throw new ApiError(
+      409,
+      "HAS_COORDINATOR",
+      "This village has a coordinator. Their decision stands — appoint or deactivate them instead of overriding.",
+    );
+  }
+
+  if (request.status !== RequestStatus.PENDING_VALIDATION) {
+    throw new ApiError(
+      409,
+      "ALREADY_DECIDED",
+      `This request is already ${request.status.toLowerCase().replace(/_/g, " ")}`,
+    );
+  }
+
+  const approved = input.decision === "APPROVE";
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const r = await tx.request.update({
+      where: { id: request.id },
+      data: {
+        status: approved ? RequestStatus.OPEN : RequestStatus.REJECTED,
+        validatedAt: new Date(),
+        rejectionNote: approved ? null : (input.note ?? null),
+      },
+    });
+
+    // Deliberately NOT auto-verifying the athlete. A coordinator approving is a neighbour
+    // saying "I know this person"; an admin approving from a spreadsheet is not, and
+    // minting a VERIFIED badge off it would cash a cheque nobody wrote.
+    if (approved && request.athleteId) {
+      await tx.verificationRecord.create({
+        data: {
+          subjectAthleteId: request.athleteId,
+          reviewerUserId: input.adminUserId,
+          decision: VerificationStatus.PENDING,
+          note: `Request "${request.title}" opened centrally — no coordinator covers ${request.village.name}. Identity not vouched for locally.`,
+        },
+      });
+    }
+    return r;
+  });
+
+  const beneficiaryUserId = request.athlete?.user.id;
+  if (beneficiaryUserId) {
+    await notify(
+      beneficiaryUserId,
+      approved ? "VERIFICATION_RESULT" : "INFO_REQUESTED",
+      {
+        title: approved ? "Your request is live" : "Your request needs changes",
+        body: approved
+          ? `"${request.title}" was reviewed by khelkhud and is now visible to sponsors. There is no coordinator in ${request.village.name} yet.`
+          : `"${request.title}" was not approved. ${input.note ?? ""}`.trim(),
+        linkUrl: "/dashboard/athlete/requests",
+      },
+    );
+  }
+
+  return updated;
+}
