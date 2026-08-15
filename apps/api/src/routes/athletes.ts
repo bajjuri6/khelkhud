@@ -12,6 +12,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { ApiError } from "../middleware/errors.js";
 import { validate } from "../middleware/validate.js";
+import { notifyValidators } from "../services/coordinator.service.js";
 
 export const athletesRouter: Router = Router();
 
@@ -477,6 +478,11 @@ athletesRouter.post(
         },
         include: { items: true },
       });
+
+      // Fire and forget: the athlete's request succeeded whether or not the coordinator's
+      // email goes out, and making them wait on SES to see their own 201 helps nobody.
+      void notifyValidators(request.id);
+
       res.status(201).json({ data: request });
     } catch (err) {
       next(err);

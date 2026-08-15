@@ -1,7 +1,8 @@
 import { RequestStatus, VerificationStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { logger } from "../lib/logger.js";
 import { ApiError } from "../middleware/errors.js";
-import { notify } from "./notify.js";
+import { notify, notifyMany } from "./notify.js";
 
 /**
  * Coordinator authority.
@@ -309,4 +310,67 @@ export async function decideRequestAsAdmin(input: {
   }
 
   return updated;
+}
+
+/**
+ * Tell whoever must validate a new request that it is waiting.
+ *
+ * Without this a coordinator only discovers work by opening the dashboard. In a village
+ * where the coordinator is a PET teacher who checks the site weekly, an athlete waits a
+ * week for a decision that takes ten seconds.
+ *
+ * Routes to the village's active coordinators, or to admins when it has none — matching
+ * who actually holds the authority to decide it (see decideRequestAsAdmin). Never throws:
+ * failing to send a notification must not fail the request that triggered it.
+ */
+export async function notifyValidators(requestId: string): Promise<void> {
+  try {
+    const request = await prisma.request.findUnique({
+      where: { id: requestId },
+      include: {
+        village: {
+          include: {
+            coordinators: {
+              where: { isActive: true },
+              select: { userId: true },
+            },
+          },
+        },
+        athlete: { include: { user: { select: { name: true } } } },
+        institution: { select: { name: true } },
+      },
+    });
+    if (!request) return;
+
+    const who = request.athlete?.user.name ?? request.institution?.name ?? "Someone";
+    const village = request.village.name;
+    const coordinatorUserIds = request.village.coordinators.map((c) => c.userId);
+
+    if (coordinatorUserIds.length > 0) {
+      await notifyMany(coordinatorUserIds, "REQUEST_SUBMITTED", {
+        title: `${who} raised a request in ${village}`,
+        body: `"${request.title}" is waiting for you to validate it. Approving makes it visible to sponsors immediately.`,
+        linkUrl: "/dashboard/coordinator",
+      });
+      return;
+    }
+
+    // No coordinator: the request is unapprovable by anyone except an admin, so tell them
+    // rather than letting it sit in a queue nobody is watching.
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: { id: true },
+    });
+    await notifyMany(
+      admins.map((a) => a.id),
+      "REQUEST_SUBMITTED",
+      {
+        title: `${who} raised a request in ${village}, which has no coordinator`,
+        body: `"${request.title}" cannot be validated locally. Appoint a coordinator for ${village}, or open it centrally.`,
+        linkUrl: "/admin/requests",
+      },
+    );
+  } catch (err) {
+    logger.error({ err, requestId }, "Failed to notify validators");
+  }
 }

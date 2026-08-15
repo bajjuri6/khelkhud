@@ -26,39 +26,68 @@ async function main() {
   const user = await prisma.user.upsert({
     where: { email: "test-player@khelkhud.dev" },
     update: {},
-    create: { email: "test-player@khelkhud.dev", name: "Test Player", role: "PLAYER" },
+    create: { email: "test-player@khelkhud.dev", name: "Test Player", role: "ATHLETE" },
   });
-  if (user.role !== "PLAYER") {
-    await prisma.user.update({ where: { id: user.id }, data: { role: "PLAYER" } });
+  if (user.role !== "ATHLETE") {
+    await prisma.user.update({ where: { id: user.id }, data: { role: "ATHLETE" } });
   }
-  await prisma.playerProfile.upsert({
+  const existingProfile = await prisma.athleteProfile.upsert({
     where: { userId: user.id },
     update: {},
     create: { userId: user.id },
   });
-  const cookie = `kk_session=${await signSession({ uid: user.id, role: "PLAYER" })}`;
+
+  // Requests survive between runs on the same test athlete, and a validated "Season kit"
+  // left behind makes the "not yet public" assertion fail against last run's data rather
+  // than this one's. Clear them so the script is repeatable.
+  const priorSponsorships = await prisma.sponsorship.findMany({
+    where: { athleteId: existingProfile.id },
+    select: { id: true },
+  });
+  const priorIds = priorSponsorships.map((x) => x.id);
+  if (priorIds.length > 0) {
+    // Children first: allocations, updates, transactions and documents all FK to
+    // Sponsorship, and Postgres will not let the parent go while they point at it.
+    await prisma.sponsorshipAllocation.deleteMany({ where: { sponsorshipId: { in: priorIds } } });
+    await prisma.sponsorshipUpdate.deleteMany({ where: { sponsorshipId: { in: priorIds } } });
+    await prisma.transaction.deleteMany({ where: { sponsorshipId: { in: priorIds } } });
+    await prisma.document.deleteMany({ where: { sponsorshipId: { in: priorIds } } });
+    await prisma.sponsorship.deleteMany({ where: { id: { in: priorIds } } });
+  }
+  await prisma.requestItem.deleteMany({ where: { request: { athleteId: existingProfile.id } } });
+  await prisma.request.deleteMany({ where: { athleteId: existingProfile.id } });
+  const cookie = `kk_session=${await signSession({ uid: user.id, role: "ATHLETE" })}`;
   const headers = { cookie, "Content-Type": "application/json" };
 
   // Meta
   const sports = await (await fetch(`${API}/api/meta/sports`)).json();
   check("meta/sports returns 12", sports.data?.length === 12, sports.data?.length);
   const states = await (await fetch(`${API}/api/meta/locations?level=STATE`)).json();
-  check("meta/locations has 4 states", states.data?.length === 4, states.data?.length);
+  check(
+    "meta/locations returns the pilot state",
+    states.data?.some((l: { name: string }) => l.name === "Telangana"),
+    states.data?.map((l: { name: string }) => l.name),
+  );
   const cricket = sports.data.find((s: { name: string }) => s.name === "Cricket");
   const districts = await (
     await fetch(`${API}/api/meta/locations?level=DISTRICT&parentId=${states.data[0].id}`)
   ).json();
-  const cities = await (
-    await fetch(`${API}/api/meta/locations?level=CITY&parentId=${districts.data[0].id}`)
+  // v2 requests are raised in a village, not a city: villageId is required and must be
+  // LEVEL=VILLAGE. Resolved through the public search so this exercises the same path the
+  // village picker uses.
+  const villageSearch = await (
+    await fetch(`${API}/api/meta/villages/search?q=Abbenda`)
   ).json();
+  const village = villageSearch.data?.[0];
+  check("village resolver returns a village", Boolean(village), villageSearch);
 
   // Profile update
-  const putRes = await fetch(`${API}/api/players/me`, {
+  const putRes = await fetch(`${API}/api/athletes/me`, {
     method: "PUT",
     headers,
     body: JSON.stringify({
       sportId: cricket.id,
-      locationId: cities.data[0].id,
+      locationId: village.id,
       dateOfBirth: new Date("2008-04-15").toISOString(),
       category: "UNDER_19",
       experienceLevel: "DISTRICT",
@@ -67,17 +96,17 @@ async function main() {
       coachContact: "9999999999",
     }),
   });
-  check("PUT /players/me", putRes.ok, putRes.status);
+  check("PUT /athletes/me", putRes.ok, putRes.status);
 
   // Achievement + event + requirement
-  const ach = await fetch(`${API}/api/players/me/achievements`, {
+  const ach = await fetch(`${API}/api/athletes/me/achievements`, {
     method: "POST",
     headers,
     body: JSON.stringify({ title: "District U-19 Champion", level: "DISTRICT", year: 2025 }),
   });
   check("POST achievement", ach.status === 201, ach.status);
 
-  const ev = await fetch(`${API}/api/players/me/events`, {
+  const ev = await fetch(`${API}/api/athletes/me/events`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -90,21 +119,30 @@ async function main() {
   });
   check("POST event", ev.status === 201, ev.status);
 
-  const reqRes = await fetch(`${API}/api/players/me/requirements`, {
+  const reqRes = await fetch(`${API}/api/athletes/me/requests`, {
     method: "POST",
     headers,
     body: JSON.stringify({
+      kind: "CASH",
       title: "Season kit",
       description: "Bat, pads and travel",
-      totalAmountPaise: 1500000,
-      breakdown: [
-        { label: "Cricket bat", amountPaise: 400000 },
-        { label: "Kit", amountPaise: 500000 },
-        { label: "Travel", amountPaise: 600000 },
+      items: [
+        { label: "Cricket bat", quantity: 1, estimatedPaise: 400000 },
+        { label: "Kit", quantity: 1, estimatedPaise: 500000 },
+        { label: "Travel", quantity: 1, estimatedPaise: 600000 },
       ],
     }),
   });
-  check("POST requirement", reqRes.status === 201, reqRes.status);
+  const created = await reqRes.json();
+  check("POST request", reqRes.status === 201, reqRes.status);
+  // The total is summed server-side; a client-supplied one is ignored on purpose.
+  check("total computed server-side", created.data?.totalEstimatedPaise === 1500000, created.data?.totalEstimatedPaise);
+  check(
+    "request waits for validation",
+    created.data?.status === "PENDING_VALIDATION",
+    created.data?.status,
+  );
+  const requestId: string = created.data?.id;
 
   // Upload flow (1x1 px PNG)
   const png = Buffer.from(
@@ -145,7 +183,7 @@ async function main() {
   ).json();
   check("confirm upload", Boolean(confirm.data?.id), confirm);
 
-  await fetch(`${API}/api/players/me`, {
+  await fetch(`${API}/api/athletes/me`, {
     method: "PUT",
     headers,
     body: JSON.stringify({ photoKey: presign.data.storageKey }),
@@ -158,16 +196,71 @@ async function main() {
   check("public photo serves", photoRes.ok, photoRes.status);
 
   // Public profile
-  const profile = await prisma.playerProfile.findUniqueOrThrow({ where: { userId: user.id } });
-  const pub = await (await fetch(`${API}/api/players/${profile.id}`)).json();
+  const profile = await prisma.athleteProfile.findUniqueOrThrow({ where: { userId: user.id } });
+  const pub = await (await fetch(`${API}/api/athletes/${profile.id}`)).json();
   check("public profile name", pub.data?.name === "Test Player", pub.data?.name);
   check("public profile hides coach contact", !("coachContact" in (pub.data ?? {})), pub.data);
   check("public profile has age not DOB", typeof pub.data?.age === "number" && !pub.data?.dateOfBirth);
+  // Not public yet: an athlete vouching for themselves is not validation.
   check(
-    "public profile requirement present",
-    pub.data?.requirements?.some((r: { title: string }) => r.title === "Season kit"),
+    "pending request is hidden from the public profile",
+    !pub.data?.requests?.some((r: { title: string }) => r.title === "Season kit"),
+    pub.data?.requests,
   );
   check("public location label", String(pub.data?.locationLabel ?? "").includes(","), pub.data?.locationLabel);
+
+  // ---------- Coordinator validation ----------
+  // The core v2 trust flow: the request only reaches sponsors once someone local approves.
+  const coordUser = await prisma.user.upsert({
+    where: { email: "test-coordinator@khelkhud.dev" },
+    update: { role: "COORDINATOR" },
+    create: { email: "test-coordinator@khelkhud.dev", name: "Test Coordinator", role: "COORDINATOR" },
+  });
+  const adminForAppointment = await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" } });
+  await prisma.coordinatorProfile.upsert({
+    where: { userId: coordUser.id },
+    update: { isActive: true, villages: { set: [{ id: village.id }] } },
+    create: {
+      userId: coordUser.id,
+      designation: "PET teacher, smoke test",
+      appointedById: adminForAppointment.id,
+      villages: { connect: [{ id: village.id }] },
+    },
+  });
+  const coordHeaders = {
+    cookie: `kk_session=${await signSession({ uid: coordUser.id, role: "COORDINATOR" })}`,
+    "Content-Type": "application/json",
+  };
+
+  const coordQueue = await (
+    await fetch(`${API}/api/coordinators/me/queue`, { headers: coordHeaders })
+  ).json();
+  check(
+    "request appears in the coordinator queue",
+    coordQueue.data?.pending?.some((r: { id: string }) => r.id === requestId),
+    coordQueue.data?.pending?.length,
+  );
+
+  const decideRes = await fetch(`${API}/api/coordinators/requests/${requestId}/decide`, {
+    method: "POST",
+    headers: coordHeaders,
+    body: JSON.stringify({ decision: "APPROVE" }),
+  });
+  check("coordinator approves", decideRes.ok, decideRes.status);
+
+  const pubAfter = await (await fetch(`${API}/api/athletes/${profile.id}`)).json();
+  check(
+    "validated request is now public",
+    pubAfter.data?.requests?.some((r: { title: string }) => r.title === "Season kit"),
+    pubAfter.data?.requests,
+  );
+  check(
+    "public profile names who vouched",
+    Boolean(
+      pubAfter.data?.requests?.find((r: { title: string }) => r.title === "Season kit")
+        ?.validatedBy?.designation,
+    ),
+  );
 
   // ---------- Sponsorship flow (stub payments) ----------
   const sponsorUser = await prisma.user.upsert({
@@ -185,16 +278,16 @@ async function main() {
     "Content-Type": "application/json",
   };
 
-  const requirement = await prisma.sponsorshipRequirement.findFirstOrThrow({
-    where: { playerId: profile.id, title: "Season kit" },
+  const request = await prisma.request.findFirstOrThrow({
+    where: { athleteId: profile.id, title: "Season kit" },
   });
   const createRes = await (
     await fetch(`${API}/api/sponsorships`, {
       method: "POST",
       headers: sponsorHeaders,
       body: JSON.stringify({
-        playerId: profile.id,
-        requirementId: requirement.id,
+        athleteId: profile.id,
+        requestId: request.id,
         amountPaise: 500000,
         purpose: "Cricket bat and kit",
         isAnonymous: false,
@@ -218,23 +311,21 @@ async function main() {
   ).json();
   check("verify payment -> PAID", verifyRes.data?.paymentStatus === "PAID", verifyRes);
 
-  const reqAfter = await prisma.sponsorshipRequirement.findUniqueOrThrow({
-    where: { id: requirement.id },
-  });
+  const reqAfter = await prisma.request.findUniqueOrThrow({ where: { id: request.id } });
   check(
-    "requirement raised bumped",
-    reqAfter.raisedAmountPaise >= 500000 && reqAfter.status === "PARTIALLY_FUNDED",
+    "request raised amount bumped",
+    reqAfter.raisedAmountPaise >= 500000 && reqAfter.status === "PARTIALLY_FULFILLED",
     { raised: reqAfter.raisedAmountPaise, status: reqAfter.status },
   );
 
   const playerNotif = await prisma.notification.findFirst({
     where: { userId: user.id, type: "SPONSORSHIP_RECEIVED" },
   });
-  check("player notified", Boolean(playerNotif), playerNotif?.title);
+  check("athlete notified", Boolean(playerNotif), playerNotif?.title);
 
   // Player sees the sponsorship; anonymity respected on anonymous ones
   const playerList = await (
-    await fetch(`${API}/api/players/me/sponsorships`, { headers })
+    await fetch(`${API}/api/athletes/me/sponsorships`, { headers })
   ).json();
   check(
     "player sees sponsorship",
@@ -366,7 +457,7 @@ async function main() {
   ).json();
   check("post linked update", Boolean(linkedUpdate.data?.id), linkedUpdate);
   const sponsorNotif = await prisma.notification.findFirst({
-    where: { userId: sponsorUser.id, type: "PLAYER_UPDATE" },
+    where: { userId: sponsorUser.id, type: "ATHLETE_UPDATE" },
     orderBy: { createdAt: "desc" },
   });
   check("sponsor notified of update", Boolean(sponsorNotif), sponsorNotif?.title);
@@ -382,7 +473,7 @@ async function main() {
     }),
   });
   const publicUpdates = await (
-    await fetch(`${API}/api/players/${profile.id}/updates`)
+    await fetch(`${API}/api/athletes/${profile.id}/updates`)
   ).json();
   const titles = (publicUpdates.data ?? []).map((u: { title: string }) => u.title);
   check("general update public", titles.includes("Training camp completed"), titles);
@@ -406,14 +497,14 @@ async function main() {
   };
 
   const forbidden = await fetch(`${API}/api/admin/stats`, { headers });
-  check("admin routes forbidden for player", forbidden.status === 403, forbidden.status);
+  check("admin routes forbidden for athlete", forbidden.status === 403, forbidden.status);
 
   const stats = await (await fetch(`${API}/api/admin/stats`, { headers: adminHeaders })).json();
   check(
     "admin stats shape",
     typeof stats.data?.totalSponsoredPaise === "number" &&
       Array.isArray(stats.data?.bySport) &&
-      stats.data.totalPlayers >= 6,
+      stats.data.totalAthletes >= 6,
     stats.data,
   );
 
@@ -422,25 +513,25 @@ async function main() {
   ).json();
   check(
     "verification queue has pending profiles",
-    (queue.data?.players?.length ?? 0) > 0,
-    queue.data?.players?.length,
+    (queue.data?.athletes?.length ?? 0) > 0,
+    queue.data?.athletes?.length,
   );
 
   // Approve the smoke-test player, verify effects, then revert for repeatability
   const approveRes = await (
-    await fetch(`${API}/api/admin/verifications/player/${profile.id}`, {
+    await fetch(`${API}/api/admin/verifications/athlete/${profile.id}`, {
       method: "POST",
       headers: adminHeaders,
       body: JSON.stringify({ decision: "VERIFIED" }),
     })
   ).json();
   check("admin approve", approveRes.data?.ok === true, approveRes);
-  const verifiedProfile = await prisma.playerProfile.findUniqueOrThrow({
+  const verifiedProfile = await prisma.athleteProfile.findUniqueOrThrow({
     where: { id: profile.id },
   });
   check("profile now VERIFIED", verifiedProfile.verificationStatus === "VERIFIED");
   const record = await prisma.verificationRecord.findFirst({
-    where: { subjectPlayerId: profile.id },
+    where: { subjectAthleteId: profile.id },
     orderBy: { createdAt: "desc" },
   });
   check("verification record written", record?.decision === "VERIFIED", record);
@@ -448,15 +539,15 @@ async function main() {
     where: { userId: user.id, type: "VERIFICATION_RESULT" },
     orderBy: { createdAt: "desc" },
   });
-  check("player notified of verification", Boolean(verifyNotif), verifyNotif?.title);
+  check("athlete notified of verification", Boolean(verifyNotif), verifyNotif?.title);
 
-  const inDiscovery = await (await fetch(`${API}/api/players`)).json();
+  const inDiscovery = await (await fetch(`${API}/api/athletes`)).json();
   check(
-    "verified player appears in default discovery",
+    "verified athlete appears in default discovery",
     inDiscovery.data?.some((p: { id: string }) => p.id === profile.id),
   );
   // Revert so repeated smoke runs keep exercising the queue
-  await prisma.playerProfile.update({
+  await prisma.athleteProfile.update({
     where: { id: profile.id },
     data: { verificationStatus: "PENDING", verifiedAt: null },
   });
@@ -487,10 +578,10 @@ async function main() {
   }
 
   const playerDash = await (
-    await fetch(`${API}/api/players/me/dashboard`, { headers })
+    await fetch(`${API}/api/athletes/me/dashboard`, { headers })
   ).json();
   check(
-    "player dashboard totals",
+    "athlete dashboard totals",
     playerDash.data?.totalReceivedPaise >= 500000 && playerDash.data?.fundingRequiredPaise > 0,
     playerDash.data,
   );

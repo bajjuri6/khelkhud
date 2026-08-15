@@ -91,6 +91,9 @@ enum NotificationType {
   VERIFICATION_RESULT
   PAYMENT_CONFIRMED
   INFO_REQUESTED
+  /// A request needs validating. Goes to the village coordinator, or to admins when the
+  /// village has none - see orphanedRequestQueue in coordinator.service.ts.
+  REQUEST_SUBMITTED
   SYSTEM
 }
 

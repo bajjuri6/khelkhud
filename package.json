@@ -1,6 +1,6 @@
 {
   "name": "khelkhud",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "packageManager": "pnpm@10.12.1",
   "engines": {
@@ -20,7 +20,8 @@
     "typecheck": "turbo typecheck",
     "db:migrate": "pnpm --filter @khelkhud/api db:migrate",
     "db:seed": "pnpm --filter @khelkhud/api db:seed",
-    "db:studio": "pnpm --filter @khelkhud/api db:studio"
+    "db:studio": "pnpm --filter @khelkhud/api db:studio",
+    "smoke": "pnpm --filter @khelkhud/api smoke"
   },
   "devDependencies": {
     "dotenv": "^16.6.1",
