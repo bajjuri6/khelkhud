@@ -596,6 +596,117 @@ async function main() {
     sponsorDash.data,
   );
 
+  // ---------- Supplier catalogue ----------
+  // The three properties worth protecting: an unapproved supplier reaches no donor, a
+  // supplier cannot touch a competitor's offer, and the cheapest honest price wins the sort.
+  const catItem = await prisma.equipmentItem.findFirstOrThrow({
+    where: { isActive: true },
+    orderBy: { slug: "asc" },
+  });
+
+  const browse = await (await fetch(`${API}/api/catalogue?q=${encodeURIComponent(catItem.name.slice(0, 12))}`)).json();
+  check("catalogue search finds the item", (browse.meta?.total ?? 0) > 0, browse.meta);
+
+  const bySlug = await (await fetch(`${API}/api/catalogue/${catItem.slug}`)).json();
+  check("catalogue resolves by public slug", bySlug.data?.id === catItem.id, bySlug.data?.slug);
+
+  const supUser = await prisma.user.upsert({
+    where: { email: "test-supplier@khelkhud.dev" },
+    update: { role: "SUPPLIER" },
+    create: { email: "test-supplier@khelkhud.dev", name: "Test Supplier", role: "SUPPLIER" },
+  });
+  const rivalUser = await prisma.user.upsert({
+    where: { email: "test-supplier-rival@khelkhud.dev" },
+    update: { role: "SUPPLIER" },
+    create: { email: "test-supplier-rival@khelkhud.dev", name: "Rival Supplier", role: "SUPPLIER" },
+  });
+  // Start unapproved every run: the gate is the thing under test, so inheriting canPublish
+  // from a previous run would make this assertion pass without proving anything.
+  const supProfile = await prisma.supplierProfile.upsert({
+    where: { userId: supUser.id },
+    update: { canPublish: false, isActive: true },
+    create: { userId: supUser.id, name: "Test Supplier Co", canPublish: false },
+  });
+  await prisma.supplierProfile.upsert({
+    where: { userId: rivalUser.id },
+    update: { canPublish: true, isActive: true },
+    create: { userId: rivalUser.id, name: "Rival Supplier Co", canPublish: true },
+  });
+  await prisma.supplierOffer.deleteMany({ where: { supplierId: supProfile.id } });
+
+  const supHeaders = {
+    cookie: `kk_session=${await signSession({ uid: supUser.id, role: "SUPPLIER" })}`,
+    "Content-Type": "application/json",
+  };
+  const rivalHeaders = {
+    cookie: `kk_session=${await signSession({ uid: rivalUser.id, role: "SUPPLIER" })}`,
+    "Content-Type": "application/json",
+  };
+  const offerBody = JSON.stringify({
+    equipmentItemId: catItem.id,
+    marketplace: "DIRECT",
+    url: "https://supplier.example/item",
+    pricePaise: Math.round(catItem.indicativePaise * 0.9),
+  });
+
+  const blocked = await fetch(`${API}/api/suppliers/me/offers`, {
+    method: "POST",
+    headers: supHeaders,
+    body: offerBody,
+  });
+  check("unapproved supplier cannot publish", blocked.status === 403, blocked.status);
+
+  await prisma.supplierProfile.update({
+    where: { id: supProfile.id },
+    data: { canPublish: true },
+  });
+  const allowed = await (
+    await fetch(`${API}/api/suppliers/me/offers`, { method: "POST", headers: supHeaders, body: offerBody })
+  ).json();
+  check("approved supplier can publish", Boolean(allowed.data?.id), allowed);
+  const offerId: string = allowed.data?.id;
+
+  const seen = await (await fetch(`${API}/api/catalogue/${catItem.slug}`)).json();
+  check(
+    "approved supplier offer is publicly visible",
+    seen.data?.offers?.some((o: { id: string }) => o.id === offerId),
+    seen.data?.offers?.length,
+  );
+
+  // Revoking trust must hide the offer without destroying it - an admin withdrawing
+  // approval is not the same as a supplier deleting their catalogue.
+  await prisma.supplierProfile.update({ where: { id: supProfile.id }, data: { canPublish: false } });
+  const hidden = await (await fetch(`${API}/api/catalogue/${catItem.slug}`)).json();
+  check(
+    "revoking canPublish hides the offer publicly",
+    !hidden.data?.offers?.some((o: { id: string }) => o.id === offerId),
+    hidden.data?.offers?.length,
+  );
+  const stillMine = await (await fetch(`${API}/api/suppliers/me`, { headers: supHeaders })).json();
+  check(
+    "but the supplier still sees their own offer",
+    stillMine.data?.offers?.some((o: { id: string }) => o.id === offerId),
+    stillMine.data?.offers?.length,
+  );
+
+  const crossEdit = await fetch(`${API}/api/suppliers/me/offers/${offerId}`, {
+    method: "PATCH",
+    headers: rivalHeaders,
+    body: JSON.stringify({ pricePaise: 100 }),
+  });
+  check("a supplier cannot edit a competitor's offer", crossEdit.status === 403, crossEdit.status);
+  const ghostEdit = await fetch(`${API}/api/suppliers/me/offers/does-not-exist`, {
+    method: "PATCH",
+    headers: rivalHeaders,
+    body: JSON.stringify({ pricePaise: 100 }),
+  });
+  // Same status for missing and forbidden, or the API becomes an offer-id oracle.
+  check(
+    "missing and forbidden are indistinguishable",
+    ghostEdit.status === crossEdit.status,
+    { ghost: ghostEdit.status, cross: crossEdit.status },
+  );
+
   console.log(failures === 0 ? "\nSMOKE PASS" : `\nSMOKE FAIL (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
 }

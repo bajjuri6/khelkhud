@@ -15,6 +15,8 @@ import { updatesRouter } from "./routes/updates.js";
 import { adminRouter } from "./routes/admin.js";
 import { coordinatorsRouter } from "./routes/coordinators.js";
 import { institutionsRouter } from "./routes/institutions.js";
+import { catalogueRouter } from "./routes/catalogue.js";
+import { suppliersRouter } from "./routes/suppliers.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import {
   filesRouter,
@@ -68,6 +70,8 @@ app.use("/api/updates", updatesRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/coordinators", coordinatorsRouter);
 app.use("/api/institutions", institutionsRouter);
+app.use("/api/catalogue", catalogueRouter);
+app.use("/api/suppliers", suppliersRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/uploads", uploadsRouter);
 app.use("/api/files", filesRouter);

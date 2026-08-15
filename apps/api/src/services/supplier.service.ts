@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { ApiError } from "../middleware/errors.js";
 
@@ -78,8 +79,5 @@ export async function assertOwnsOffer(userId: string, isAdmin: boolean, offerId:
  */
 export const PUBLIC_OFFER_WHERE = {
   isActive: true,
-  OR: [
-    { supplierId: null },
-    { supplier: { canPublish: true, isActive: true } },
-  ],
-} as const;
+  OR: [{ supplierId: null }, { supplier: { canPublish: true, isActive: true } }],
+} satisfies Prisma.SupplierOfferWhereInput;

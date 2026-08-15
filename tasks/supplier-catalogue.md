@@ -185,10 +185,19 @@ disagree.
 
 ### Staleness, honestly
 
-`checkedAt` is shown as "price checked 40 days ago", and offers older than 90 days are
-sorted last and visually de-emphasised. We do not scrape marketplaces to refresh — that is
-brittle and adversarial. The honest move is to show the age and let the donor judge, which
-matches §4's "indicative price is the guard, not a guarantee".
+`checkedAt` is shown as "price checked 40 days ago" and stale offers are visually
+de-emphasised. We do not scrape marketplaces to refresh — brittle and adversarial.
+
+**Staleness does not reorder** (revised 2026-08-15; the first draft said offers over 90
+days sort last). Demoting a genuinely cheapest link below a pricier one whose only merit is
+a fresher timestamp costs the donor real money to buy a timestamp, which works directly
+against §1.2. Sort order is: not-overpriced first, then cheapest, then most recently
+checked as a tiebreaker. Age is shown, not punished — and a dead link costs one click,
+while overpaying costs the difference.
+
+Changing a price also refreshes `checkedAt`, since you cannot restate a price without
+having just checked it. Editing only the URL or active flag does not, so a stale price
+cannot be laundered into a fresh-looking one.
 
 ## 7. Waves
 
