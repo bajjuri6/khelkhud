@@ -83,6 +83,14 @@ export function SiteHeader({ me }: { me: Me | null }) {
               Find athletes
             </Link>
             <Link
+              href="/equipment"
+              className={cn(
+                "transition-colors hover:text-foreground",
+              )}
+            >
+              What kit costs
+            </Link>
+            <Link
               href="/#proof"
               className={cn(
                 "transition-colors hover:text-foreground",

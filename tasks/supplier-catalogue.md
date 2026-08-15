@@ -236,7 +236,17 @@ does not edit — the only shared file is `index.ts`, which I take.
 | D | Supplier self-serve | `app/dashboard/supplier/**`, supplier approval in `app/admin/suppliers/**` |
 | E | Catalogue picker in the request form | `components/equipment-picker.tsx`, athlete + coordinator request forms |
 
-**Wave 3 — public `/equipment` browse + SEO** (needs 1A). Sequential, small.
+**Wave 3 — public `/equipment` browse + SEO** — done. `/equipment` and
+`/equipment/<slug>`, linked from the public nav, in the sitemap.
+
+**No Product or Offer structured data**, deliberately. We are not the merchant and our
+prices are indicative and stale by design (`checkedAt`). Emitting price markup would push
+figures we have explicitly refused to guarantee into search results, where they read as
+current and authoritative — and would misrepresent khelkhud as selling something. The pages
+carry `ItemList` (names and URLs only) and `BreadcrumbList`; the AEO value comes from plain
+on-page answers to "what does a kabaddi mat cost in India", which is a real question with
+almost no honest answer online. Outbound seller links are `nofollow`: commercial, unvetted,
+and not ours to vouch for.
 
 Then steps 5 (pledges, delivery confirmation) and 6 (`SponsorVillage` fan-out) — separate
 tasks, not this one.
