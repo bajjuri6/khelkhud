@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { equipmentSlug } from "@khelkhud/shared";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -160,6 +161,7 @@ async function main() {
   console.log(`Seeded ${SPORTS.length} sports`);
 
   await seedPilotLocations();
+  await seedCatalogue();
 
   for (const email of ADMIN_EMAILS) {
     await prisma.user.upsert({
@@ -175,6 +177,47 @@ async function main() {
     return;
   }
   await seedDemoData();
+}
+
+/**
+ * The equipment catalogue.
+ *
+ * Idempotent on `slug`, which is the same key the bulk importer dedupes on — so seeding
+ * and importing cannot produce two rows for the same object. Prices are researched Indian
+ * retail as of 2026 and deliberately honest: this number is what tells a donor that a
+ * quoted price is wrong, so an invented one is worse than none.
+ */
+async function seedCatalogue() {
+  const raw = readFileSync(path.join(here, "data/catalogue.json"), "utf8");
+  const rows = JSON.parse(raw) as {
+    name: string;
+    sport?: string;
+    category: string;
+    spec?: string;
+    indicativeRupees: number;
+  }[];
+
+  const sports = await prisma.sport.findMany({ select: { id: true, name: true } });
+  const sportByName = new Map(sports.map((s) => [s.name, s.id]));
+
+  let created = 0;
+  for (const row of rows) {
+    const slug = equipmentSlug({ name: row.name, category: row.category, sport: row.sport });
+    const data = {
+      name: row.name,
+      category: row.category as never,
+      spec: row.spec ?? null,
+      sportId: row.sport ? (sportByName.get(row.sport) ?? null) : null,
+      indicativePaise: Math.round(row.indicativeRupees * 100),
+    };
+    const res = await prisma.equipmentItem.upsert({
+      where: { slug },
+      update: data,
+      create: { slug, ...data },
+    });
+    if (res.createdAt.getTime() === res.updatedAt.getTime()) created++;
+  }
+  console.log(`Seeded catalogue: ${rows.length} items (${created} new)`);
 }
 
 // ---------- Demo data ----------

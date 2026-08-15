@@ -3,6 +3,8 @@ export * from "./auth.js";
 export * from "./coordinator.js";
 export * from "./institution.js";
 export * from "./athlete.js";
+export * from "./catalogue.js";
+export * from "./supplier.js";
 export * from "./sponsor.js";
 export * from "./sponsorship.js";
 export * from "./tracking.js";

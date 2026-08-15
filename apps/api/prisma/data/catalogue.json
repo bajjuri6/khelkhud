@@ -1,0 +1,53 @@
+[
+  { "name": "Cricket bat, Kashmir willow, size 6", "sport": "Cricket", "category": "BAT", "spec": "Short handle, 1100-1200g. Entry level for under-16.", "indicativeRupees": 1800 },
+  { "name": "Cricket bat, English willow, size SH", "sport": "Cricket", "category": "BAT", "spec": "Grade 4, short handle, 1150-1250g.", "indicativeRupees": 6500 },
+  { "name": "Cricket leather ball, 4-piece", "sport": "Cricket", "category": "BALL", "spec": "156g, red. Match grade.", "indicativeRupees": 450 },
+  { "name": "Cricket season ball, 2-piece practice", "sport": "Cricket", "category": "BALL", "spec": "156g. Practice grade.", "indicativeRupees": 220 },
+  { "name": "Cricket batting pads, youth", "sport": "Cricket", "category": "PROTECTIVE", "spec": "Ambidextrous, high-density foam.", "indicativeRupees": 1400 },
+  { "name": "Cricket batting gloves, youth", "sport": "Cricket", "category": "PROTECTIVE", "spec": "Cotton palm, sausage finger.", "indicativeRupees": 700 },
+  { "name": "Cricket abdominal guard", "sport": "Cricket", "category": "PROTECTIVE", "spec": "Moulded, with pouch.", "indicativeRupees": 250 },
+  { "name": "Cricket helmet, youth", "sport": "Cricket", "category": "PROTECTIVE", "spec": "Steel grille, BS7928 style.", "indicativeRupees": 1900 },
+  { "name": "Cricket wicket keeping gloves", "sport": "Cricket", "category": "PROTECTIVE", "spec": "Leather palm, youth size.", "indicativeRupees": 1200 },
+  { "name": "Cricket stumps set with bails", "sport": "Cricket", "category": "KIT", "spec": "Wooden, 28 inch, set of 6 with bails.", "indicativeRupees": 900 },
+  { "name": "Cricket kit bag, wheelie", "sport": "Cricket", "category": "KIT", "spec": "Full size, wheeled.", "indicativeRupees": 2200 },
+  { "name": "Cricket practice net, 10x10 ft", "sport": "Cricket", "category": "NET", "spec": "Nylon, UV treated.", "indicativeRupees": 2400 },
+  { "name": "Cricket batting shoes, rubber spike", "sport": "Cricket", "category": "SHOE", "spec": "Sizes 4-11.", "indicativeRupees": 1600 },
+
+  { "name": "Kabaddi mat, 10x10 m", "sport": "Kabaddi", "category": "MAT", "spec": "40mm EVA foam, IKF pattern.", "indicativeRupees": 185000 },
+  { "name": "Kabaddi practice mat, 6x6 m", "sport": "Kabaddi", "category": "MAT", "spec": "25mm EVA foam, training grade.", "indicativeRupees": 62000 },
+  { "name": "Kabaddi knee support pair", "sport": "Kabaddi", "category": "PROTECTIVE", "spec": "Neoprene, open patella.", "indicativeRupees": 550 },
+  { "name": "Kabaddi ankle support pair", "sport": "Kabaddi", "category": "PROTECTIVE", "spec": "Elastic, adjustable strap.", "indicativeRupees": 400 },
+  { "name": "Kabaddi team jersey set of 12", "sport": "Kabaddi", "category": "APPAREL", "spec": "Polyester, numbered.", "indicativeRupees": 4800 },
+
+  { "name": "Running spikes, sprint", "sport": "Athletics", "category": "SHOE", "spec": "6-pin, sizes 4-11.", "indicativeRupees": 2800 },
+  { "name": "Running shoes, training", "sport": "Athletics", "category": "SHOE", "spec": "Neutral cushioning, sizes 4-11.", "indicativeRupees": 2400 },
+  { "name": "Shot put, 4 kg", "sport": "Athletics", "category": "TRAINING", "spec": "Cast iron, women/youth.", "indicativeRupees": 1500 },
+  { "name": "Shot put, 7.26 kg", "sport": "Athletics", "category": "TRAINING", "spec": "Cast iron, senior men.", "indicativeRupees": 2100 },
+  { "name": "Discus, 1 kg", "sport": "Athletics", "category": "TRAINING", "spec": "Wooden with metal rim.", "indicativeRupees": 1300 },
+  { "name": "Javelin, 600 g", "sport": "Athletics", "category": "TRAINING", "spec": "Aluminium, competition.", "indicativeRupees": 3200 },
+  { "name": "Starting blocks, pair", "sport": "Athletics", "category": "TRAINING", "spec": "Aluminium, adjustable.", "indicativeRupees": 6500 },
+  { "name": "Relay batons, set of 4", "sport": "Athletics", "category": "TRAINING", "spec": "Aluminium, 30cm.", "indicativeRupees": 700 },
+  { "name": "Hurdles, adjustable, set of 5", "sport": "Athletics", "category": "TRAINING", "spec": "Steel, 76-106cm.", "indicativeRupees": 12500 },
+  { "name": "Stopwatch, digital", "sport": "Athletics", "category": "TRAINING", "spec": "1/100s, 100 lap memory.", "indicativeRupees": 900 },
+  { "name": "Measuring tape, 50 m", "sport": "Athletics", "category": "TRAINING", "spec": "Fibreglass, open reel.", "indicativeRupees": 750 },
+
+  { "name": "Volleyball, size 5", "sport": "Volleyball", "category": "BALL", "spec": "18-panel, moulded.", "indicativeRupees": 950 },
+  { "name": "Volleyball net with antenna", "sport": "Volleyball", "category": "NET", "spec": "9.5x1m, nylon, steel cable.", "indicativeRupees": 2600 },
+  { "name": "Volleyball pole set", "sport": "Volleyball", "category": "KIT", "spec": "Steel, adjustable, pair.", "indicativeRupees": 11000 },
+  { "name": "Volleyball knee pads pair", "sport": "Volleyball", "category": "PROTECTIVE", "spec": "Foam padded.", "indicativeRupees": 600 },
+
+  { "name": "Football, size 5", "sport": "Football", "category": "BALL", "spec": "32-panel, hand stitched.", "indicativeRupees": 1100 },
+  { "name": "Football boots, moulded studs", "sport": "Football", "category": "SHOE", "spec": "Sizes 4-11.", "indicativeRupees": 1900 },
+  { "name": "Football shin guards pair", "sport": "Football", "category": "PROTECTIVE", "spec": "Slip-in, youth.", "indicativeRupees": 400 },
+  { "name": "Goal net pair, 24x8 ft", "sport": "Football", "category": "NET", "spec": "Nylon, 4mm.", "indicativeRupees": 5400 },
+  { "name": "Training cones, set of 20", "sport": "Football", "category": "TRAINING", "spec": "PVC, 9 inch.", "indicativeRupees": 650 },
+
+  { "name": "Badminton racket, graphite", "sport": "Badminton", "category": "KIT", "spec": "85-90g, strung.", "indicativeRupees": 1700 },
+  { "name": "Shuttlecocks, feather, box of 12", "sport": "Badminton", "category": "BALL", "spec": "Speed 77, tournament.", "indicativeRupees": 1300 },
+  { "name": "Badminton net, 20 ft", "sport": "Badminton", "category": "NET", "spec": "Nylon, taped top.", "indicativeRupees": 800 },
+  { "name": "Badminton shoes, non-marking", "sport": "Badminton", "category": "SHOE", "spec": "Sizes 4-11.", "indicativeRupees": 2100 },
+
+  { "name": "First aid kit, sports", "category": "OTHER", "spec": "Strapping, antiseptic, cold spray, bandages.", "indicativeRupees": 1400 },
+  { "name": "Water bottles, set of 10", "category": "OTHER", "spec": "1L squeeze, carrier included.", "indicativeRupees": 900 },
+  { "name": "Cold compress pack, reusable", "category": "OTHER", "spec": "Gel, pack of 4.", "indicativeRupees": 500 }
+]

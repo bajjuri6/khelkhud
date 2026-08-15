@@ -97,6 +97,29 @@ enum NotificationType {
   SYSTEM
 }
 
+/// Where a donor actually buys the thing. khelkhud never handles the transaction - see
+/// docs/architecture/v2-village-model.md section 4, "Why donors buy directly". DIRECT is a
+/// supplier's own storefront link, NOT an in-platform order.
+enum Marketplace {
+  AMAZON
+  FLIPKART
+  MEESHO
+  DIRECT
+}
+
+enum EquipmentCategory {
+  BAT
+  BALL
+  SHOE
+  KIT
+  PROTECTIVE
+  MAT
+  NET
+  APPAREL
+  TRAINING
+  OTHER
+}
+
 enum TransactionType {
   SPONSORSHIP_PAYMENT
   REFUND
@@ -127,30 +150,32 @@ enum LocationSource {
 // ---------- Core ----------
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  googleSub String?  @unique
+  id           String   @id @default(cuid())
+  email        String   @unique
+  googleSub    String?  @unique
   /// scrypt hash, format: scrypt$N$r$p$<salt-b64>$<key-b64>. Null for Google-only accounts.
   /// Never selected into an API response — see routes/auth.ts.
   passwordHash String?
-  name      String
-  avatarUrl String?
-  role      Role?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  name         String
+  avatarUrl    String?
+  role         Role?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   athleteProfile     AthleteProfile?
   sponsorProfile     SponsorProfile?
   coordinatorProfile CoordinatorProfile? @relation("CoordinatorUser")
+  supplierProfile    SupplierProfile?    @relation("SupplierUser")
+  suppliersApproved  SupplierProfile[]   @relation("SupplierApprover")
 
   coordinatorsAppointed CoordinatorProfile[] @relation("CoordinatorAppointer")
   institutionsCustodied Institution[]        @relation("InstitutionCustodian")
   requestsRaised        Request[]            @relation("RequestRaiser")
 
-  notifications  Notification[]
-  documents      Document[]           @relation("UploadedDocuments")
-  verifications  VerificationRecord[] @relation("Reviewer")
+  notifications Notification[]
+  documents     Document[]           @relation("UploadedDocuments")
+  verifications VerificationRecord[] @relation("Reviewer")
 
   @@index([role])
 }
@@ -165,12 +190,12 @@ model Location {
 
   /// Government identifier. Survives renames and boundary changes, and is the key every
   /// official scheme uses - which is why it is the anchor even when null for now.
-  lgdCode  String?       @unique
+  lgdCode     String?        @unique
   /// The narrowing key for village resolution: PIN first, fuzzy name second.
-  pincode  String?
+  pincode     String?
   /// Alternate and historical spellings, matched alongside `name`. Villages genuinely have
   /// several; without this the same place gets created twice.
-  aliases  String[]      @default([])
+  aliases     String[]       @default([])
   /// Denormalised "Ammapur, Dubbak, Medak, Telangana" so a village renders without
   /// walking four levels of the tree.
   displayPath String?
@@ -206,7 +231,8 @@ model Sport {
   isActive Boolean @default(true)
 
   athleteProfiles AthleteProfile[]
-  preferredBy    SponsorProfile[] @relation("PreferredSports")
+  preferredBy     SponsorProfile[] @relation("PreferredSports")
+  equipmentItems  EquipmentItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -215,8 +241,8 @@ model Sport {
 // ---------- Profiles ----------
 
 model AthleteProfile {
-  id              String             @id @default(cuid())
-  userId          String             @unique
+  id              String           @id @default(cuid())
+  userId          String           @unique
   sportId         String?
   locationId      String?
   dateOfBirth     DateTime?
@@ -242,7 +268,7 @@ model AthleteProfile {
   sponsorships        Sponsorship[]
   updates             SponsorshipUpdate[]
   documents           Document[]
-  verificationRecords VerificationRecord[]     @relation("AthleteVerifications")
+  verificationRecords VerificationRecord[] @relation("AthleteVerifications")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -281,11 +307,11 @@ model SponsorProfile {
 /// centralised across thousands of villages, and a PET teacher or sarpanch can judge
 /// whether a claimed district medal is real in a way a remote reviewer cannot.
 model CoordinatorProfile {
-  id          String  @id @default(cuid())
-  userId      String  @unique
+  id            String  @id @default(cuid())
+  userId        String  @unique
   /// Shown to sponsors so they can judge the vouching: "PET teacher, ZPHS Ammapur".
-  designation String
-  phone       String?
+  designation   String
+  phone         String?
   /// This is a delegation of trust, so who granted it is recorded.
   appointedById String
   isActive      Boolean @default(true)
@@ -323,8 +349,8 @@ model Institution {
   description String?
   custodianId String?
 
-  village   Location @relation(fields: [villageId], references: [id])
-  custodian User?    @relation("InstitutionCustodian", fields: [custodianId], references: [id])
+  village   Location  @relation(fields: [villageId], references: [id])
+  custodian User?     @relation("InstitutionCustodian", fields: [custodianId], references: [id])
   requests  Request[]
 
   createdAt DateTime @default(now())
@@ -337,7 +363,7 @@ model Institution {
 
 model Achievement {
   id              String           @id @default(cuid())
-  athleteId        String
+  athleteId       String
   title           String
   level           ExperienceLevel?
   year            Int?
@@ -354,7 +380,7 @@ model Achievement {
 
 model Event {
   id                    String    @id @default(cuid())
-  athleteId              String
+  athleteId             String
   name                  String
   date                  DateTime?
   venue                 String?
@@ -394,7 +420,7 @@ enum RequestStatus {
 /// Generalises v1's SponsorshipRequirement. A need, raised in a village, for either an
 /// athlete or an institution, met with either equipment or cash.
 model Request {
-  id            String        @id @default(cuid())
+  id            String      @id @default(cuid())
   kind          RequestKind
   /// Denormalised from the beneficiary so the sponsor notification fan-out is one indexed
   /// query rather than a join through two optional relations.
@@ -439,15 +465,20 @@ model Request {
 /// One line of a request. For CASH this is a label and an amount. For EQUIPMENT it will
 /// also carry a catalogue reference (added in step 4, deliberately not stubbed here).
 model RequestItem {
-  id             String @id @default(cuid())
-  requestId      String
-  label          String
-  quantity       Int    @default(1)
-  estimatedPaise Int
-  fulfilledQty   Int    @default(0)
-  note           String?
+  id              String  @id @default(cuid())
+  requestId       String
+  /// Nullable on purpose. A CASH line ("Travel to Nationals, Ranchi") never points at the
+  /// catalogue, and an equipment request for something genuinely not catalogued must still
+  /// be raisable rather than blocked on an admin adding a row first.
+  equipmentItemId String?
+  label           String
+  quantity        Int     @default(1)
+  estimatedPaise  Int
+  fulfilledQty    Int     @default(0)
+  note            String?
 
-  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request       Request        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  equipmentItem EquipmentItem? @relation(fields: [equipmentItemId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -461,14 +492,14 @@ model Counter {
 }
 
 model Sponsorship {
-  id            String  @id @default(cuid())
-  code          String  @unique
-  sponsorId     String
-  athleteId      String
-  requestId     String?
-  amountPaise   Int
-  purpose       String
-  isAnonymous   Boolean @default(false)
+  id          String  @id @default(cuid())
+  code        String  @unique
+  sponsorId   String
+  athleteId   String
+  requestId   String?
+  amountPaise Int
+  purpose     String
+  isAnonymous Boolean @default(false)
 
   status            SponsorshipStatus @default(ACTIVE)
   paymentStatus     PaymentStatus     @default(CREATED)
@@ -477,9 +508,9 @@ model Sponsorship {
   razorpayOrderId   String? @unique
   razorpayPaymentId String?
 
-  sponsor     SponsorProfile          @relation(fields: [sponsorId], references: [id])
-  athlete      AthleteProfile           @relation(fields: [athleteId], references: [id])
-  request     Request?                @relation(fields: [requestId], references: [id])
+  sponsor SponsorProfile @relation(fields: [sponsorId], references: [id])
+  athlete AthleteProfile @relation(fields: [athleteId], references: [id])
+  request Request?       @relation(fields: [requestId], references: [id])
 
   allocations  SponsorshipAllocation[]
   updates      SponsorshipUpdate[]
@@ -514,14 +545,14 @@ model SponsorshipAllocation {
 
 model SponsorshipUpdate {
   id            String  @id @default(cuid())
-  athleteId      String
+  athleteId     String
   /// Null = general profile update visible to everyone; set = linked to one sponsorship
   sponsorshipId String?
   title         String
   body          String
 
-  athlete      AthleteProfile @relation(fields: [athleteId], references: [id])
-  sponsorship Sponsorship?  @relation(fields: [sponsorshipId], references: [id])
+  athlete     AthleteProfile @relation(fields: [athleteId], references: [id])
+  sponsorship Sponsorship?   @relation(fields: [sponsorshipId], references: [id])
   attachments Document[]
 
   createdAt DateTime @default(now())
@@ -542,13 +573,13 @@ model Document {
   sizeBytes      Int
   uploaderUserId String
 
-  athleteProfileId  String?
+  athleteProfileId String?
   sponsorProfileId String?
   sponsorshipId    String?
   updateId         String?
 
   uploader       User               @relation("UploadedDocuments", fields: [uploaderUserId], references: [id])
-  athleteProfile  AthleteProfile?     @relation(fields: [athleteProfileId], references: [id])
+  athleteProfile AthleteProfile?    @relation(fields: [athleteProfileId], references: [id])
   sponsorProfile SponsorProfile?    @relation(fields: [sponsorProfileId], references: [id])
   sponsorship    Sponsorship?       @relation(fields: [sponsorshipId], references: [id])
   update         SponsorshipUpdate? @relation(fields: [updateId], references: [id])
@@ -566,13 +597,13 @@ model Document {
 // ---------- Ops ----------
 
 model Notification {
-  id       String           @id @default(cuid())
-  userId   String
-  type     NotificationType
-  title    String
-  body     String
-  linkUrl  String?
-  readAt   DateTime?
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  linkUrl   String?
+  readAt    DateTime?
   emailedAt DateTime?
 
   user User @relation(fields: [userId], references: [id])
@@ -586,13 +617,13 @@ model Notification {
 
 model VerificationRecord {
   id               String             @id @default(cuid())
-  subjectAthleteId  String?
+  subjectAthleteId String?
   subjectSponsorId String?
   reviewerUserId   String
   decision         VerificationStatus
   note             String?
 
-  subjectAthlete  AthleteProfile?  @relation("AthleteVerifications", fields: [subjectAthleteId], references: [id])
+  subjectAthlete AthleteProfile? @relation("AthleteVerifications", fields: [subjectAthleteId], references: [id])
   subjectSponsor SponsorProfile? @relation("SponsorVerifications", fields: [subjectSponsorId], references: [id])
   reviewer       User            @relation("Reviewer", fields: [reviewerUserId], references: [id])
 
@@ -622,4 +653,91 @@ model Transaction {
 
   @@unique([providerPaymentId])
   @@index([sponsorshipId])
+}
+
+/// A sporting-goods manufacturer, distributor or retailer.
+///
+/// The account and the permission to be seen by donors are deliberately separate: a
+/// supplier can register and build their catalogue while an admin decides whether to trust
+/// them in front of the public. See docs/architecture/v2-village-model.md section 9.4.
+model SupplierProfile {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  /// Trading name shown to donors: "Sachdev Sports, Secunderabad".
+  name         String
+  website      String?
+  gstin        String?
+  contactPhone String?
+
+  /// The grant. False by default - nothing this supplier publishes is public until an
+  /// admin flips it, and flipping it back hides their offers without deleting them.
+  canPublish   Boolean   @default(false)
+  approvedById String?
+  approvedAt   DateTime?
+  isActive     Boolean   @default(true)
+
+  user       User            @relation("SupplierUser", fields: [userId], references: [id])
+  approvedBy User?           @relation("SupplierApprover", fields: [approvedById], references: [id])
+  offers     SupplierOffer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([canPublish, isActive])
+}
+
+/// The canonical vocabulary: one row per buyable thing.
+///
+/// Not a shop. This exists so a coordinator in Ammapur and a donor in New Jersey can mean
+/// the same object, and so the donor has a number to judge a price against.
+model EquipmentItem {
+  id              String            @id @default(cuid())
+  /// Stable dedupe key for bulk import. `name` is not one - "Cricket bat size 6" and
+  /// "Cricket Bat, Size 6" are the same object, and an admin WILL re-upload a corrected
+  /// sheet. Re-importing matches on this and updates rather than duplicating.
+  slug            String            @unique
+  name            String
+  sportId         String?
+  category        EquipmentCategory
+  /// Free text: size, weight, material. The detail that makes it buyable.
+  spec            String?
+  /// What a donor should expect to pay. ADMIN-owned - it is the guard AGAINST the seller,
+  /// so a supplier setting it would invert the control.
+  indicativePaise Int
+  isActive        Boolean           @default(true)
+
+  sport        Sport?          @relation(fields: [sportId], references: [id])
+  offers       SupplierOffer[]
+  requestItems RequestItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, isActive])
+  @@index([sportId])
+}
+
+/// Where to actually buy an EquipmentItem, and for how much.
+model SupplierOffer {
+  id              String      @id @default(cuid())
+  /// Null means an admin-curated marketplace link with no supplier behind it - the common
+  /// case at launch, since Amazon listings have no khelkhud account.
+  supplierId      String?
+  equipmentItemId String
+  marketplace     Marketplace
+  url             String
+  pricePaise      Int
+  /// Links and prices rot. We do not scrape to refresh - brittle and adversarial - so the
+  /// age is surfaced in the UI and the donor judges. See the spec's staleness note.
+  checkedAt       DateTime    @default(now())
+  isActive        Boolean     @default(true)
+
+  supplier      SupplierProfile? @relation(fields: [supplierId], references: [id])
+  equipmentItem EquipmentItem    @relation(fields: [equipmentItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([equipmentItemId, isActive])
+  @@index([supplierId])
 }
