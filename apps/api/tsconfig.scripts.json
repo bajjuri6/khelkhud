@@ -1,0 +1,11 @@
+{
+  // scripts/ and prisma/ are excluded from tsconfig.json because they are not part of the
+  // built output (rootDir is src). That left them unchecked entirely — a duplicate variable
+  // in smoke.ts once got all the way to a runtime esbuild failure. Checked separately.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["scripts", "prisma", "src"]
+}

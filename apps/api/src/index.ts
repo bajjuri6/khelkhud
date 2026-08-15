@@ -16,6 +16,7 @@ import { adminRouter } from "./routes/admin.js";
 import { coordinatorsRouter } from "./routes/coordinators.js";
 import { institutionsRouter } from "./routes/institutions.js";
 import { catalogueRouter } from "./routes/catalogue.js";
+import { adminCatalogueRouter } from "./routes/admin-catalogue.js";
 import { suppliersRouter } from "./routes/suppliers.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import {
@@ -67,6 +68,7 @@ app.use("/api/athletes", athletesRouter);
 app.use("/api/sponsors", sponsorsRouter);
 app.use("/api/sponsorships", sponsorshipsRouter);
 app.use("/api/updates", updatesRouter);
+app.use("/api/admin/catalogue", adminCatalogueRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/coordinators", coordinatorsRouter);
 app.use("/api/institutions", institutionsRouter);

@@ -61,7 +61,15 @@ async function main() {
 
   // Meta
   const sports = await (await fetch(`${API}/api/meta/sports`)).json();
-  check("meta/sports returns 12", sports.data?.length === 12, sports.data?.length);
+  // Not an exact count: the sport list grows as the catalogue does, and asserting "12"
+  // just means the next person to add a sport gets a red build for no reason.
+  check(
+    "meta/sports returns the pilot sports",
+    ["Cricket", "Kabaddi", "Athletics", "Volleyball"].every((n: string) =>
+      sports.data?.some((s: { name: string }) => s.name === n),
+    ),
+    sports.data?.map((s: { name: string }) => s.name),
+  );
   const states = await (await fetch(`${API}/api/meta/locations?level=STATE`)).json();
   check(
     "meta/locations returns the pilot state",

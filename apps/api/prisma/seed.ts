@@ -32,6 +32,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const SPORTS = [
   "Cricket", "Football", "Hockey", "Badminton", "Kabaddi", "Athletics",
   "Wrestling", "Boxing", "Table Tennis", "Swimming", "Archery", "Weightlifting",
+  "Volleyball",
 ];
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
@@ -187,6 +188,17 @@ async function main() {
  * retail as of 2026 and deliberately honest: this number is what tells a donor that a
  * quoted price is wrong, so an invented one is worse than none.
  */
+function resolveSport(name: string, byName: Map<string, string>): string {
+  const id = byName.get(name);
+  if (!id) {
+    throw new Error(
+      `catalogue.json references sport "${name}", which is not in SPORTS. ` +
+        `Add it there, or the items silently get sportId=null and vanish from every sport filter.`,
+    );
+  }
+  return id;
+}
+
 async function seedCatalogue() {
   const raw = readFileSync(path.join(here, "data/catalogue.json"), "utf8");
   const rows = JSON.parse(raw) as {
@@ -207,7 +219,7 @@ async function seedCatalogue() {
       name: row.name,
       category: row.category as never,
       spec: row.spec ?? null,
-      sportId: row.sport ? (sportByName.get(row.sport) ?? null) : null,
+      sportId: row.sport ? resolveSport(row.sport, sportByName) : null,
       indicativePaise: Math.round(row.indicativeRupees * 100),
     };
     const res = await prisma.equipmentItem.upsert({
