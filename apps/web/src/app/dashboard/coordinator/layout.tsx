@@ -4,6 +4,7 @@ import { getMe } from "@/lib/api-server";
 
 const NAV = [
   { href: "/dashboard/coordinator", label: "Validation queue" },
+  { href: "/dashboard/coordinator/requests", label: "Raise a request" },
   { href: "/dashboard/coordinator/institutions", label: "Places" },
 ];
 

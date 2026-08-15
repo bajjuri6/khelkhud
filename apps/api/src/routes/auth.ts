@@ -37,11 +37,8 @@ function dashboardPath(role: string | null): string {
       return "/dashboard/sponsor";
     case "COORDINATOR":
       return "/dashboard/coordinator";
-    // No supplier surface yet — it arrives with the catalogue (v2 doc §8, step 4). Until
-    // then send them to the public site: wrong, but a real page, whereas the `/onboarding`
-    // default would bounce a user who already has a role back into role selection.
     case "SUPPLIER":
-      return "/";
+      return "/dashboard/supplier";
     case "ADMIN":
       return "/admin";
     default:

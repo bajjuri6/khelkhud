@@ -19,7 +19,6 @@ import { ApiError } from "../middleware/errors.js";
 import { validate } from "../middleware/validate.js";
 import {
   assertOwnsOffer,
-  requirePublishingSupplier,
   requireSupplier,
 } from "../services/supplier.service.js";
 
@@ -28,11 +27,14 @@ export const suppliersRouter: Router = Router();
 /**
  * Supplier self-serve.
  *
- * Note the asymmetry, which is the point of the whole surface: **reading and editing your
- * own draft catalogue needs only `requireSupplier`; putting something in front of a donor
- * needs `requirePublishingSupplier`.** Registering and being trusted are separate states —
- * a supplier builds their catalogue while an admin decides whether to trust them, and a
- * revoked grant hides their offers without deleting a thing they wrote.
+ * Every route here needs only `requireSupplier`. Writing an offer is NOT gated on
+ * approval: registering and being trusted are separate states, so a supplier builds their
+ * catalogue while an admin decides, and it goes live the moment the grant lands.
+ *
+ * Visibility is enforced in exactly one other place — `PUBLIC_OFFER_WHERE`, applied by the
+ * public catalogue routes. That separation is deliberate. Gating the write as well would
+ * mean an approved supplier starts from nothing, and would put the same rule in two places
+ * where only one of them is the one that actually protects donors.
  *
  * Authority never gets re-derived here. Ownership goes through `assertOwnsOffer` so that
  * "not yours" and "does not exist" stay indistinguishable, exactly as with coordinators.
@@ -164,7 +166,10 @@ suppliersRouter.post(
   validate(supplierOfferCreateSchema),
   async (req, res, next) => {
     try {
-      const profile = await requirePublishingSupplier(req.user!.uid);
+      // Not gated on approval — see the note at the top of this file. An unapproved
+      // supplier writing an offer is writing a draft; PUBLIC_OFFER_WHERE is what keeps it
+      // away from donors until an admin grants publication.
+      const profile = await requireSupplier(req.user!.uid);
       const body = req.body as SupplierOfferCreateInput;
 
       const item = await prisma.equipmentItem.findUnique({

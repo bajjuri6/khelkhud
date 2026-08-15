@@ -657,26 +657,29 @@ async function main() {
     pricePaise: Math.round(catItem.indicativePaise * 0.9),
   });
 
-  const blocked = await fetch(`${API}/api/suppliers/me/offers`, {
-    method: "POST",
-    headers: supHeaders,
-    body: offerBody,
-  });
-  check("unapproved supplier cannot publish", blocked.status === 403, blocked.status);
+  // An unapproved supplier CAN write an offer — that is the draft catalogue. What must
+  // hold is that nobody sees it. Asserting "creation 403s" would test a gate we chose not
+  // to have and would pass even if the offer leaked.
+  const drafted = await (
+    await fetch(`${API}/api/suppliers/me/offers`, { method: "POST", headers: supHeaders, body: offerBody })
+  ).json();
+  check("unapproved supplier can draft an offer", Boolean(drafted.data?.id), drafted);
+  const offerId: string = drafted.data?.id;
+
+  const whileUnapproved = await (await fetch(`${API}/api/catalogue/${catItem.slug}`)).json();
+  check(
+    "an unapproved supplier's draft reaches no donor",
+    !whileUnapproved.data?.offers?.some((o: { id: string }) => o.id === offerId),
+    whileUnapproved.data?.offers?.length,
+  );
 
   await prisma.supplierProfile.update({
     where: { id: supProfile.id },
     data: { canPublish: true },
   });
-  const allowed = await (
-    await fetch(`${API}/api/suppliers/me/offers`, { method: "POST", headers: supHeaders, body: offerBody })
-  ).json();
-  check("approved supplier can publish", Boolean(allowed.data?.id), allowed);
-  const offerId: string = allowed.data?.id;
-
   const seen = await (await fetch(`${API}/api/catalogue/${catItem.slug}`)).json();
   check(
-    "approved supplier offer is publicly visible",
+    "approval makes the existing draft visible, with nothing re-entered",
     seen.data?.offers?.some((o: { id: string }) => o.id === offerId),
     seen.data?.offers?.length,
   );

@@ -27,25 +27,6 @@ export async function requireSupplier(userId: string) {
 }
 
 /**
- * A supplier who may publish. Used for anything that becomes visible to donors.
- *
- * Kept distinct from `requireSupplier` on purpose: an unapproved supplier can still read
- * and edit their own draft catalogue, which is the whole point of letting them register
- * before approval. Only publication is gated.
- */
-export async function requirePublishingSupplier(userId: string) {
-  const profile = await requireSupplier(userId);
-  if (!profile.canPublish) {
-    throw new ApiError(
-      403,
-      "NOT_APPROVED",
-      "An admin has not approved this supplier to publish yet",
-    );
-  }
-  return profile;
-}
-
-/**
  * Load an offer the caller is allowed to act on.
  *
  * A non-existent offer and someone else's offer return the SAME 403, never a 404 — the

@@ -20,10 +20,8 @@ function dashboardPath(role: Me["role"]): string {
       return "/dashboard/coordinator";
     case "ADMIN":
       return "/admin";
-    // No supplier surface exists yet. Falling through to /onboarding would bounce them
-    // back here, since onboarding redirects anyone who already has a role.
     case "SUPPLIER":
-      return "/";
+      return "/dashboard/supplier";
     default:
       return "/onboarding";
   }

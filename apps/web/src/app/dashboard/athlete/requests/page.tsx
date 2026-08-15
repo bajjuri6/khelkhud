@@ -12,7 +12,7 @@ type ProfileForRequests = {
 export default async function RequestsPage() {
   const profileRes = await apiServer<{ data: ProfileForRequests }>("/api/athletes/me");
   if (!profileRes) {
-    return <p className="text-slate">Could not load your requests. Try again.</p>;
+    return <p className="text-muted-foreground">Could not load your requests. Try again.</p>;
   }
 
   const { location, requests } = profileRes.data;
@@ -24,7 +24,7 @@ export default async function RequestsPage() {
   return (
     <div>
       <h1 className="font-display text-h2 font-semibold">Requests</h1>
-      <p className="mt-2 max-w-prose text-sm text-slate">
+      <p className="mt-2 max-w-prose text-sm text-muted-foreground">
         Ask for equipment a sponsor can buy and send you, or for cash toward travel, coaching
         and entry fees. Either way your village coordinator sees it first.
       </p>

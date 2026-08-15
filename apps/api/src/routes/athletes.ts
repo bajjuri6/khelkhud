@@ -1,5 +1,5 @@
 ﻿import { Router } from "express";
-import { LocationLevel, RequestStatus } from "@prisma/client";
+import { LocationLevel, RequestKind, RequestStatus } from "@prisma/client";
 import {
   achievementSchema,
   eventSchema,
@@ -9,6 +9,7 @@ import {
 } from "@khelkhud/shared";
 import type { RequestCreateInput, RequestItemInput, RequestUpdateInput } from "@khelkhud/shared";
 import { prisma } from "../lib/prisma.js";
+import { assertCatalogueLinks } from "../services/catalogue.service.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { ApiError } from "../middleware/errors.js";
 import { validate } from "../middleware/validate.js";
@@ -58,8 +59,30 @@ function itemRows(items: RequestItemInput[]) {
     quantity: i.quantity,
     estimatedPaise: i.estimatedPaise,
     note: i.note ?? null,
+    // Null is the normal case, not a failure: cash lines never point at the catalogue and
+    // an uncatalogued item still has to be askable. See assertCatalogueLinks below.
+    equipmentItemId: i.equipmentItemId ?? null,
   }));
 }
+
+/**
+ * What a linked catalogue row carries downstream.
+ *
+ * The name is the shared vocabulary — a coordinator in Ammapur and a donor in New Jersey
+ * meaning the same object — and `indicativePaise` is the price anchor that lets the donor
+ * see that ₹18,000 for that bat is wrong. Both are useless if the request only ships the
+ * athlete's own free text, so every surface that shows request items selects them.
+ */
+const EQUIPMENT_ITEM_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  indicativePaise: true,
+} as const;
+
+const REQUEST_ITEM_INCLUDE = {
+  equipmentItem: { select: EQUIPMENT_ITEM_SELECT },
+} as const;
 
 /** Age in whole years, so date of birth stays private. */
 function toAge(dob: Date | null): number | null {
@@ -217,7 +240,9 @@ athletesRouter.get("/me", requireAuth, requireRole("ATHLETE"), async (req, res, 
         achievements: { orderBy: [{ year: "desc" }, { createdAt: "desc" }] },
         events: { orderBy: { date: "asc" } },
         requests: {
-          include: { items: { orderBy: { createdAt: "asc" } } },
+          include: {
+            items: { orderBy: { createdAt: "asc" }, include: REQUEST_ITEM_INCLUDE },
+          },
           orderBy: { createdAt: "desc" },
         },
         documents: { orderBy: { createdAt: "desc" } },
@@ -461,6 +486,7 @@ athletesRouter.post(
       const profile = await myProfile(req.user!.uid);
       const { deadline, items, ...rest } = req.body as RequestCreateInput;
       const villageId = await myVillageId(profile.locationId);
+      await assertCatalogueLinks(rest.kind as RequestKind, items);
 
       const request = await prisma.request.create({
         data: {
@@ -476,7 +502,7 @@ athletesRouter.post(
           deadline: deadline ? new Date(deadline) : null,
           items: { create: itemRows(items) },
         },
-        include: { items: true },
+        include: { items: { include: REQUEST_ITEM_INCLUDE } },
       });
 
       // Fire and forget: the athlete's request succeeded whether or not the coordinator's
@@ -512,7 +538,7 @@ athletesRouter.put(
         const closed = await prisma.request.update({
           where: { id: existing.id },
           data: { status: RequestStatus.CLOSED },
-          include: { items: true },
+          include: { items: { include: REQUEST_ITEM_INCLUDE } },
         });
         res.json({ data: closed });
         return;
@@ -534,6 +560,12 @@ athletesRouter.put(
         );
       }
 
+      // The update body is partial, so the kind an edit is judged against is the one it
+      // sets or, failing that, the one already stored — not a default. Otherwise flipping a
+      // request to CASH while leaving its catalogue-linked lines alone would slip past a
+      // check that only ever looked at the incoming body.
+      if (items) await assertCatalogueLinks((rest.kind as RequestKind) ?? existing.kind, items);
+
       const request = await prisma.$transaction(async (tx) => {
         // Items are replaced wholesale: the client edits the list as a unit, and diffing
         // by id would only add a way for the stored total to disagree with the lines.
@@ -553,7 +585,7 @@ athletesRouter.put(
             validatedAt: null,
             rejectionNote: null,
           },
-          include: { items: true },
+          include: { items: { include: REQUEST_ITEM_INCLUDE } },
         });
       });
       res.json({ data: request });
@@ -597,7 +629,10 @@ athletesRouter.get("/:id", async (req, res, next) => {
         requests: {
           where: { status: { in: ["OPEN", "PARTIALLY_FULFILLED", "FULFILLED"] } },
           include: {
-            items: { orderBy: { createdAt: "asc" } },
+            // The linked catalogue row travels with the item: this is the surface where
+            // the price anchor actually earns its keep, because it is the sponsor deciding
+            // whether ₹18,000 for that bat is a fair ask.
+            items: { orderBy: { createdAt: "asc" }, include: REQUEST_ITEM_INCLUDE },
             // Who vouched, so a sponsor can weigh it. Null means it was opened centrally
             // because the village has no coordinator - a weaker signal, and the profile
             // says so rather than letting silence read as endorsement.

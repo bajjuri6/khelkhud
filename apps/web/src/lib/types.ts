@@ -29,6 +29,8 @@ export type AthleteEvent = {
 export type RequestItem = {
   id: string;
   label: string;
+  /** Present when the line was picked from the catalogue; null for free text. */
+  equipmentItem?: { id: string; name: string; slug: string; indicativePaise: number } | null;
   quantity: number;
   estimatedPaise: number;
   fulfilledQty: number;

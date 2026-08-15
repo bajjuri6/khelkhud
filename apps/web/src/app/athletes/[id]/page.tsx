@@ -212,15 +212,27 @@ export default async function AthletePage({ params }: { params: Promise<{ id: st
                     )}
                     {items.length > 0 ? (
                       <ul className="grid gap-1 text-sm text-muted-foreground">
-                        {items.map((i) => (
-                          <li key={i.id} className="flex justify-between gap-4">
-                            <span>
-                              {i.label}
-                              {i.quantity > 1 ? ` × ${i.quantity}` : ""}
-                            </span>
-                            <span>{formatPaise(i.estimatedPaise * i.quantity)}</span>
-                          </li>
-                        ))}
+                        {items.map((i) => {
+                          // The catalogue's figure, shown beside the ask. This is the
+                          // donor's only defence against overpaying (§1.2) — it is worth
+                          // nothing sitting in the database, so it is surfaced even when
+                          // it agrees with the ask.
+                          const anchor = i.equipmentItem?.indicativePaise;
+                          return (
+                            <li key={i.id} className="flex justify-between gap-4">
+                              <span>
+                                {i.label}
+                                {i.quantity > 1 ? ` × ${i.quantity}` : ""}
+                                {anchor ? (
+                                  <span className="block text-xs text-muted-foreground">
+                                    typically {formatPaise(anchor)} each
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span>{formatPaise(i.estimatedPaise * i.quantity)}</span>
+                            </li>
+                          );
+                        })}
                       </ul>
                     ) : null}
                   </CardContent>

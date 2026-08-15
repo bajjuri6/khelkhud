@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { formatPaise } from "@khelkhud/shared";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +42,9 @@ export function EquipmentPicker({
   autoFocus?: boolean;
   label?: string;
 }) {
+  // Derived, not fixed: a create form and an edit dialog can both be mounted, and a
+  // hardcoded id makes the second label point at the first input.
+  const inputId = useId();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<CatalogueItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -85,9 +88,9 @@ export function EquipmentPicker({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label htmlFor="equipment-q">{label}</Label>
+        <Label htmlFor={inputId}>{label}</Label>
         <Input
-          id="equipment-q"
+          id={inputId}
           value={q}
           autoFocus={autoFocus}
           onChange={(e) => setQ(e.target.value)}

@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { EquipmentPicker, type CatalogueItem } from "@/components/equipment-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -22,12 +23,21 @@ import { ApiClientError, apiClient } from "@/lib/api";
 
 export type RequestKind = "EQUIPMENT" | "CASH";
 
+/** The catalogue row a saved line points at, when it points at one. */
+export type LinkedEquipmentItem = {
+  id: string;
+  name: string;
+  slug: string;
+  indicativePaise: number;
+};
+
 export type AthleteRequestItem = {
   id: string;
   label: string;
   quantity: number;
   estimatedPaise: number;
   fulfilledQty: number;
+  equipmentItem?: LinkedEquipmentItem | null;
 };
 
 export type AthleteRequest = {
@@ -49,20 +59,45 @@ export type AthleteRequest = {
   items: AthleteRequestItem[];
 };
 
+/**
+ * A line being edited.
+ *
+ * `equipmentItemId` is what makes the line mean the same object to a donor in New Jersey as
+ * to the athlete typing it, and it carries the price anchor with it. It stays null for
+ * everything else — cash lines, and equipment the catalogue has never heard of — which is
+ * an ordinary outcome, not a half-filled form. `indicativePaise` is kept alongside the
+ * athlete's own figure rather than replacing it, so an override shows up as a difference
+ * instead of quietly overwriting the number a sponsor would have judged the ask against.
+ */
+type DraftItem = {
+  label: string;
+  quantity: string;
+  rupees: string;
+  equipmentItemId: string | null;
+  indicativePaise: number | null;
+};
+
 type Draft = {
   kind: RequestKind;
   title: string;
   description: string;
-  items: { label: string; quantity: string; rupees: string }[];
+  items: DraftItem[];
 };
 
-const EMPTY_ITEM = { label: "", quantity: "1", rupees: "" };
+const EMPTY_ITEM: DraftItem = {
+  label: "",
+  quantity: "1",
+  rupees: "",
+  equipmentItemId: null,
+  indicativePaise: null,
+};
 
+// Equipment starts with no lines because the first step is the catalogue, not a blank box.
 const emptyDraft = (): Draft => ({
   kind: "EQUIPMENT",
   title: "",
   description: "",
-  items: [{ ...EMPTY_ITEM }],
+  items: [],
 });
 
 const KINDS: { value: RequestKind; label: string; blurb: string }[] = [
@@ -108,12 +143,17 @@ const STATUS: Record<AthleteRequest["status"], StatusMeta> = {
 };
 
 /** Money is integer paise everywhere; rupees only ever exist in this input. */
+function linePaise(item: DraftItem): number | null {
+  const rupees = Number(item.rupees);
+  return item.rupees.trim() && rupees > 0 ? rupeesToPaise(rupees) : null;
+}
+
 function draftTotalPaise(draft: Draft): number {
   return draft.items.reduce((sum, i) => {
-    const rupees = Number(i.rupees);
+    const paise = linePaise(i);
     const qty = Number(i.quantity);
-    if (!(rupees > 0) || !(qty > 0)) return sum;
-    return sum + rupeesToPaise(rupees) * Math.round(qty);
+    if (paise === null || !(qty > 0)) return sum;
+    return sum + paise * Math.round(qty);
   }, 0);
 }
 
@@ -128,6 +168,7 @@ function toPayload(draft: Draft) {
         label: i.label.trim(),
         quantity: Math.round(Number(i.quantity)),
         estimatedPaise: rupeesToPaise(Number(i.rupees)),
+        equipmentItemId: i.equipmentItemId,
       })),
   };
 }
@@ -138,19 +179,54 @@ function RequestEditor({
   onSubmit,
   submitting,
   submitLabel,
+  pickerEnabled = true,
 }: {
   draft: Draft;
   setDraft: (next: Draft) => void;
   onSubmit: () => void;
   submitting: boolean;
   submitLabel: string;
+  /**
+   * False for the editor sitting behind the edit dialog. EquipmentPicker owns a fixed input
+   * id, so two of them mounted at once would give the page duplicate ids and point a label
+   * at the wrong field — and the one behind a modal is unreachable anyway.
+   */
+  pickerEnabled?: boolean;
 }) {
   const total = draftTotalPaise(draft);
+  const isEquipment = draft.kind === "EQUIPMENT";
+  // The picker leads for equipment: the first move is looking the thing up, not typing into
+  // a blank box. It only steps aside once there is something on the list.
+  const [picking, setPicking] = useState(false);
+  const showPicker = pickerEnabled && (picking || draft.items.length === 0);
 
-  function setItem(index: number, patch: Partial<Draft["items"][number]>) {
+  function setItem(index: number, patch: Partial<DraftItem>) {
     setDraft({
       ...draft,
       items: draft.items.map((it, i) => (i === index ? { ...it, ...patch } : it)),
+    });
+  }
+
+  function addItem(item: DraftItem) {
+    setDraft({ ...draft, items: [...draft.items, item] });
+    setPicking(false);
+  }
+
+  function setKind(kind: RequestKind) {
+    setDraft({
+      ...draft,
+      kind,
+      // Cash is money toward travel and fees; the catalogue names objects a donor buys and
+      // ships. Carrying a catalogue link across the switch would be a category error the
+      // API rejects, so the link is dropped here rather than surfaced as a 400 later.
+      items:
+        kind === "CASH"
+          ? (draft.items.length > 0 ? draft.items : [{ ...EMPTY_ITEM }]).map((i) => ({
+              ...i,
+              equipmentItemId: null,
+              indicativePaise: null,
+            }))
+          : draft.items,
     });
   }
 
@@ -166,15 +242,15 @@ function RequestEditor({
                 key={k.value}
                 type="button"
                 aria-pressed={selected}
-                onClick={() => setDraft({ ...draft, kind: k.value })}
+                onClick={() => setKind(k.value)}
                 className={`rounded-xl border p-4 text-left transition-colors ${
-                  selected
-                    ? "border-marigold bg-cream-2"
-                    : "border-border bg-card hover:bg-cream-2/60"
+                  selected ? "border-marigold bg-muted" : "border-border bg-card hover:bg-muted/60"
                 }`}
               >
-                <span className="font-display text-base font-semibold text-ink">{k.label}</span>
-                <span className="mt-1 block text-sm text-slate">{k.blurb}</span>
+                <span className="font-display text-base font-semibold text-foreground">
+                  {k.label}
+                </span>
+                <span className="mt-1 block text-sm text-muted-foreground">{k.blurb}</span>
               </button>
             );
           })}
@@ -186,7 +262,7 @@ function RequestEditor({
         <Input
           id="request-title"
           placeholder={
-            draft.kind === "EQUIPMENT" ? "e.g. Kabaddi mats for our ground" : "e.g. Nationals in Ranchi"
+            isEquipment ? "e.g. Kabaddi mats for our ground" : "e.g. Nationals in Ranchi"
           }
           value={draft.title}
           onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -206,76 +282,169 @@ function RequestEditor({
 
       <div className="grid gap-3">
         <div>
-          <Label>{draft.kind === "EQUIPMENT" ? "What you need" : "What the money is for"}</Label>
-          <p className="mt-1 text-sm text-slate">
-            {draft.kind === "EQUIPMENT"
+          <Label>{isEquipment ? "What you need" : "What the money is for"}</Label>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {isEquipment
               ? "One line per item, with roughly what it costs. Sponsors can take one line each."
               : "Break the amount down. A total on its own is hard to say yes to."}
           </p>
         </div>
 
-        {draft.items.map((item, i) => (
-          <div key={i} className="flex flex-wrap items-end gap-2">
-            <div className="min-w-[12rem] flex-1 grid gap-1">
-              <Label className="text-xs text-sweat" htmlFor={`item-label-${i}`}>
-                Item
-              </Label>
-              <Input
-                id={`item-label-${i}`}
-                placeholder={draft.kind === "EQUIPMENT" ? "Volleyball net" : "Bus fare, both ways"}
-                value={item.label}
-                onChange={(e) => setItem(i, { label: e.target.value })}
-              />
-            </div>
-            <div className="grid w-20 gap-1">
-              <Label className="text-xs text-sweat" htmlFor={`item-qty-${i}`}>
-                Qty
-              </Label>
-              <Input
-                id={`item-qty-${i}`}
-                type="number"
-                min="1"
-                value={item.quantity}
-                onChange={(e) => setItem(i, { quantity: e.target.value })}
-              />
-            </div>
-            <div className="grid w-32 gap-1">
-              <Label className="text-xs text-sweat" htmlFor={`item-price-${i}`}>
-                Each (₹)
-              </Label>
-              <Input
-                id={`item-price-${i}`}
-                type="number"
-                min="0"
-                value={item.rupees}
-                onChange={(e) => setItem(i, { rupees: e.target.value })}
-              />
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Remove item"
-              disabled={draft.items.length === 1}
-              onClick={() =>
-                setDraft({ ...draft, items: draft.items.filter((_, idx) => idx !== i) })
+        {draft.items.map((item, i) => {
+          const entered = linePaise(item);
+          const linked = isEquipment && item.equipmentItemId !== null;
+          // Only worth saying when the two numbers actually disagree. A village shop may
+          // genuinely cost more, so this is context for the coordinator and the sponsor,
+          // not a correction of the athlete.
+          const gap =
+            linked && item.indicativePaise !== null && entered !== null
+              ? entered - item.indicativePaise
+              : 0;
+
+          return (
+            <div
+              key={i}
+              className={
+                isEquipment ? "rounded-xl border border-border bg-card p-3" : undefined
               }
             >
-              &times;
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[12rem] flex-1 grid gap-1">
+                  <Label className="text-xs text-muted-foreground" htmlFor={`item-label-${i}`}>
+                    Item
+                  </Label>
+                  <Input
+                    id={`item-label-${i}`}
+                    placeholder={isEquipment ? "Volleyball net" : "Bus fare, both ways"}
+                    value={item.label}
+                    onChange={(e) => setItem(i, { label: e.target.value })}
+                  />
+                </div>
+                <div className="grid w-20 gap-1">
+                  <Label className="text-xs text-muted-foreground" htmlFor={`item-qty-${i}`}>
+                    Qty
+                  </Label>
+                  <Input
+                    id={`item-qty-${i}`}
+                    type="number"
+                    min="1"
+                    value={item.quantity}
+                    onChange={(e) => setItem(i, { quantity: e.target.value })}
+                  />
+                </div>
+                <div className="grid w-32 gap-1">
+                  <Label className="text-xs text-muted-foreground" htmlFor={`item-price-${i}`}>
+                    Each (₹)
+                  </Label>
+                  <Input
+                    id={`item-price-${i}`}
+                    type="number"
+                    min="0"
+                    value={item.rupees}
+                    onChange={(e) => setItem(i, { rupees: e.target.value })}
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Remove item"
+                  disabled={!isEquipment && draft.items.length === 1}
+                  onClick={() =>
+                    setDraft({ ...draft, items: draft.items.filter((_, idx) => idx !== i) })
+                  }
+                >
+                  &times;
+                </Button>
+              </div>
+
+              {linked ? (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <span className="font-medium text-marigold">From the catalogue</span>
+                  <span className="text-muted-foreground" data-numeric>
+                    Typical price {formatPaise(item.indicativePaise ?? 0)}
+                  </span>
+                  {gap !== 0 ? (
+                    <span className="text-foreground" data-numeric>
+                      Your estimate is {formatPaise(Math.abs(gap))}{" "}
+                      {gap > 0 ? "higher" : "lower"}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    // Un-linking is a real answer, not an undo: what the catalogue calls
+                    // the item may not be what the athlete actually needs.
+                    onClick={() =>
+                      setItem(i, { equipmentItemId: null, indicativePaise: null })
+                    }
+                    className="text-muted-foreground underline hover:text-foreground"
+                  >
+                    Not this item
+                  </button>
+                </div>
+              ) : isEquipment ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Your own words. A sponsor sees no typical price against this one, so be
+                  precise about what is needed.
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+
+        {isEquipment ? (
+          showPicker ? (
+            <div className="rounded-xl border border-dashed border-border bg-muted/40 p-4">
+              <EquipmentPicker
+                autoFocus={draft.items.length > 0}
+                onPick={(picked: CatalogueItem) =>
+                  addItem({
+                    label: picked.name,
+                    quantity: "1",
+                    // Pre-filled, not fixed. The athlete can change it, and the catalogue
+                    // figure stays visible beside whatever they put.
+                    rupees: String(picked.indicativePaise / 100),
+                    equipmentItemId: picked.id,
+                    indicativePaise: picked.indicativePaise,
+                  })
+                }
+                onFreeText={(label: string) =>
+                  addItem({ ...EMPTY_ITEM, label, quantity: "1" })
+                }
+              />
+              {draft.items.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => setPicking(false)}
+                >
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            <div>
+              <Button variant="outline" size="sm" onClick={() => setPicking(true)}>
+                Add an item
+              </Button>
+            </div>
+          )
+        ) : (
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDraft({ ...draft, items: [...draft.items, { ...EMPTY_ITEM }] })}
+            >
+              Add another line
             </Button>
           </div>
-        ))}
+        )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setDraft({ ...draft, items: [...draft.items, { ...EMPTY_ITEM }] })}
-          >
-            Add another line
-          </Button>
-          <p className="text-sm text-slate">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-3">
+          <p className="text-sm text-muted-foreground">
             Estimated total{" "}
-            <span className="font-display text-base font-semibold text-ink" data-numeric>
+            <span className="font-display text-base font-semibold text-foreground" data-numeric>
               {formatPaise(total)}
             </span>
           </p>
@@ -286,7 +455,7 @@ function RequestEditor({
         <Button variant="accent" disabled={submitting} onClick={onSubmit}>
           {submitting ? "Sending…" : submitLabel}
         </Button>
-        <span className="text-xs text-sweat">
+        <span className="text-xs text-muted-foreground">
           Goes to your village coordinator first. They vouch for it, then sponsors see it.
         </span>
       </div>
@@ -370,13 +539,15 @@ export function RequestsManager({
       kind: request.kind,
       title: request.title,
       description: request.description ?? "",
-      items: request.items.length
-        ? request.items.map((i) => ({
-            label: i.label,
-            quantity: String(i.quantity),
-            rupees: String(i.estimatedPaise / 100),
-          }))
-        : [{ ...EMPTY_ITEM }],
+      // A saved line keeps whatever it was linked to, so editing the price does not
+      // silently sever the anchor a coordinator already saw it against.
+      items: request.items.map((i) => ({
+        label: i.label,
+        quantity: String(i.quantity),
+        rupees: String(i.estimatedPaise / 100),
+        equipmentItemId: i.equipmentItem?.id ?? null,
+        indicativePaise: i.equipmentItem?.indicativePaise ?? null,
+      })),
     });
   }
 
@@ -392,13 +563,14 @@ export function RequestsManager({
               onSubmit={() => void create()}
               submitting={busy}
               submitLabel="Send to my coordinator"
+              pickerEnabled={!editing}
             />
           </div>
         </section>
       ) : (
-        <section className="rounded-xl border border-dashed border-border bg-cream-2/60 p-8 text-center">
+        <section className="rounded-xl border border-dashed border-border bg-muted/60 p-8 text-center">
           <p className="font-display text-h3">Set your village first.</p>
-          <p className="mx-auto mt-2 max-w-prose text-sm text-slate">
+          <p className="mx-auto mt-2 max-w-prose text-sm text-muted-foreground">
             Sponsors follow villages, and it is your village coordinator who validates what you
             ask for. Without one there is nobody to send this to.
           </p>
@@ -411,7 +583,7 @@ export function RequestsManager({
       <section className="grid gap-4">
         <h2 className="font-display text-h3 font-semibold">Your requests</h2>
         {requests.length === 0 ? (
-          <p className="text-sm text-slate">Nothing raised yet.</p>
+          <p className="text-sm text-muted-foreground">Nothing raised yet.</p>
         ) : (
           <ul className="grid gap-4">
             {requests.map((r) => {
@@ -436,7 +608,9 @@ export function RequestsManager({
                       </p>
                       <h3 className="mt-2 font-display text-h3 font-semibold">{r.title}</h3>
                       {r.description ? (
-                        <p className="mt-1 text-sm leading-relaxed text-slate">{r.description}</p>
+                        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                          {r.description}
+                        </p>
                       ) : null}
                     </div>
                     <div className="shrink-0 text-right">
@@ -447,10 +621,12 @@ export function RequestsManager({
                     </div>
                   </div>
 
-                  {status.note ? <p className="mt-3 text-sm text-sweat">{status.note}</p> : null}
+                  {status.note ? (
+                    <p className="mt-3 text-sm text-muted-foreground">{status.note}</p>
+                  ) : null}
 
                   {r.status === "REJECTED" && r.rejectionNote ? (
-                    <blockquote className="mt-3 border-l-2 border-border bg-cream-2/60 px-4 py-3 text-sm text-slate">
+                    <blockquote className="mt-3 border-l-2 border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
                       &ldquo;{r.rejectionNote}&rdquo;
                     </blockquote>
                   ) : null}
@@ -459,15 +635,23 @@ export function RequestsManager({
                     <ul className="mt-4 space-y-2 border-t border-border pt-4">
                       {r.items.map((it) => (
                         <li key={it.id} className="flex justify-between gap-4 text-sm">
-                          <span className="text-slate">
+                          <span className="min-w-0 text-muted-foreground">
                             {it.label}
                             {it.quantity > 1 ? (
-                              <span className="text-sweat"> &times; {it.quantity}</span>
+                              <span className="text-muted-foreground"> &times; {it.quantity}</span>
                             ) : null}
                             {it.fulfilledQty > 0 ? (
-                              <span className="text-sweat">
+                              <span className="text-muted-foreground">
                                 {" "}
                                 &middot; {it.fulfilledQty} received
+                              </span>
+                            ) : null}
+                            {/* The anchor a sponsor judges the ask against, shown to the
+                                athlete too so the two of them are looking at one number. */}
+                            {it.equipmentItem ? (
+                              <span className="mt-0.5 block text-xs text-marigold" data-numeric>
+                                Catalogue &middot; typical{" "}
+                                {formatPaise(it.equipmentItem.indicativePaise)}
                               </span>
                             ) : null}
                           </span>
@@ -483,13 +667,13 @@ export function RequestsManager({
                   r.status === "PARTIALLY_FULFILLED" ||
                   r.status === "FULFILLED" ? (
                     <div className="mt-4">
-                      <div className="mb-1 flex justify-between text-sm text-slate">
+                      <div className="mb-1 flex justify-between text-sm text-muted-foreground">
                         <span data-numeric>
                           {r.kind === "CASH"
                             ? `${formatPaise(r.raisedAmountPaise)} of ${formatPaise(r.totalEstimatedPaise)} funded`
                             : `${gotQty} of ${neededQty} items received`}
                         </span>
-                        <span className="text-sweat" data-numeric>
+                        <span className="text-muted-foreground" data-numeric>
                           {pct}%
                         </span>
                       </div>

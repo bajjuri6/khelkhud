@@ -16,9 +16,8 @@ function dashboardPath(role: Exclude<Me["role"], null>): string {
       return "/dashboard/sponsor";
     case "COORDINATOR":
       return "/dashboard/coordinator";
-    // The supplier surface lands with the catalogue (v2 doc §8, step 4).
     case "SUPPLIER":
-      return "/";
+      return "/dashboard/supplier";
     case "ADMIN":
       return "/admin";
   }

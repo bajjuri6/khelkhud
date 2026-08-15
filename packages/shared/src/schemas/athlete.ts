@@ -52,6 +52,16 @@ export const requestItemSchema = z.object({
   /** Per unit, not per line. The server multiplies. */
   estimatedPaise: z.number().int().positive("Give an estimated price"),
   note: z.string().trim().max(300).nullish(),
+  /**
+   * The catalogue row this line means, when there is one.
+   *
+   * Nullable is the point (supplier-catalogue.md section 2b). A CASH line ("Bus to Ranchi")
+   * is not a thing anyone can buy off a shelf and never points at the catalogue; and an
+   * equipment request for something genuinely uncatalogued must stay raisable rather than
+   * waiting on an admin to add a row before a child can ask for shoes. The server checks
+   * the id exists and belongs on this kind of request — it is not taken on trust.
+   */
+  equipmentItemId: z.string().nullish(),
 });
 
 /**

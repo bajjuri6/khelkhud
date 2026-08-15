@@ -19,7 +19,7 @@ export default async function InstitutionsPage() {
     return (
       <div className="mx-auto w-full max-w-3xl px-6 py-16">
         <h1 className="text-h1 font-semibold">Not a coordinator</h1>
-        <p className="mt-4 leading-relaxed text-slate">
+        <p className="mt-4 leading-relaxed text-muted-foreground">
           An admin needs to appoint you and assign your villages first.
         </p>
       </div>
@@ -40,7 +40,7 @@ export default async function InstitutionsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-12">
-      <p className="eyebrow text-slate">Village coordinator</p>
+      <p className="eyebrow text-muted-foreground">Village coordinator</p>
       <h1 className="mt-3 text-h1 font-semibold">Places in your villages</h1>
       <div className="mt-8">
         <InstitutionsManager institutions={institutions} villages={villages} />

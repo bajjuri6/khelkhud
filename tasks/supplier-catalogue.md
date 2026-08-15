@@ -122,7 +122,7 @@ One rule, enforced in one place, mirroring `assertCoordinatorCovers`:
 
 | Actor | Own offers | Others' offers | `EquipmentItem` | `indicativePaise` |
 |---|---|---|---|---|
-| `SUPPLIER`, `canPublish=false` | draft only, not public | — | — | — |
+| `SUPPLIER`, `canPublish=false` | **write drafts**, invisible to donors | — | — | — |
 | `SUPPLIER`, `canPublish=true` | CRUD, live | — | propose | — |
 | `ADMIN` | CRUD any | CRUD any | CRUD | CRUD |
 
@@ -135,7 +135,14 @@ fragments into "Cricket Bat (Sachdev)" vs "Cricket bat, size 6" and the shared-v
 job in §1.1 fails. They propose; an admin merges. At pilot volume this is a handful of
 rows a week.
 
-`assertSupplierCanPublish(userId)` is the chokepoint. Out-of-scope and non-existent return
+**Writing an offer is not gated on approval** (settled 2026-08-15; the first cut gated it
+and contradicted the table above). Registering and being trusted are separate states, so a
+supplier builds their catalogue while an admin decides, and it goes live the moment the
+grant lands rather than starting from nothing. Nothing leaks: visibility is enforced in
+exactly one place, `PUBLIC_OFFER_WHERE`, applied by the public routes. Gating the write too
+would put the same rule in two places, only one of which actually protects donors.
+
+`requireSupplier` is the chokepoint. Out-of-scope and non-existent return
 the same 403, as with coordinators, so the API cannot be used to enumerate.
 
 ## 5. Import pipeline
@@ -178,7 +185,7 @@ disagree.
 | `POST/PATCH /api/admin/catalogue` | admin | curate items, set indicative price |
 | `POST /api/admin/catalogue/import` | admin | upload, dry-run, confirm |
 | `GET/POST/PATCH /api/suppliers/me/offers` | supplier | own offers only |
-| `POST /api/admin/suppliers/:id/approve` | admin | the `canPublish` grant |
+| `POST /api/admin/suppliers/:id/approval` | admin | the `canPublish` grant (and its withdrawal) |
 | `/admin/catalogue` | admin | curation + import UI |
 | `/dashboard/supplier` | supplier | own catalogue, approval state |
 | `/equipment` | public | browsable catalogue — also an SEO surface |
